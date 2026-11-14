@@ -5,17 +5,47 @@
 
 {% block extra_head %}
 <style>
+    .site-nav { background: #000; }
+    .site-nav .navbar-brand { color: #fff; font-weight: 600; }
+    .lang-globe { width: 1rem; height: 1rem; fill: currentColor; }
     .sky-layout {
-        --stage-h: min(calc(100vh - 11rem), 780px);
+        --stage-h: min(calc(100vh - 13.5rem), 780px);
         display: flex;
         align-items: flex-start;
         justify-content: center;
         gap: 1.75rem;
     }
-    .sky-form { flex: 0 0 22rem; width: 22rem; }
+    .sky-form { flex: 0 0 28rem; width: 28rem; }
     .sky-form .form-text { font-size: 0.75rem; margin-bottom: 0; }
+    .field-row {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.55rem;
+    }
+    .field-row .form-label {
+        flex: 0 0 9.2rem;
+        margin: 0;
+        font-size: 0.85rem;
+    }
+    .field-control { flex: 1 1 auto; min-width: 0; }
+    .sky-form .form-control[readonly] {
+        background-color: #fff;
+        color: #212529;
+        opacity: 1;
+    }
+    #ra,
+    #dec {
+        color: #212529;
+    }
+    #ra::placeholder,
+    #dec::placeholder {
+        color: #b7bec6;
+        opacity: 1;
+    }
+    .icon-btn svg { width: 0.95rem; height: 0.95rem; fill: currentColor; display: block; }
     .stage-frame {
-        width: min(calc(var(--stage-h) * 1.22), calc(100vw - 26rem));
+        width: min(calc(var(--stage-h) * 1.22), calc(100vw - 32rem));
         height: var(--stage-h);
     }
     .stage-actions {
@@ -30,6 +60,7 @@
         .sky-layout { flex-direction: column; align-items: stretch; }
         .sky-form { flex-basis: auto; width: 100%; }
         .stage-frame { width: 100%; }
+        .field-row { align-items: flex-start; }
     }
     #results {
         scroll-margin-top: 0.75rem;
@@ -54,65 +85,132 @@
     }
     #result-list { max-height: calc(var(--stage-h) - 1.75rem); overflow: auto; }
     #cutout-box legend { font-size: 1rem; padding: 0 0.4rem; }
+    .zone-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+    }
+    .step-box {
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 0.75rem;
+        margin-bottom: 0.85rem;
+    }
+    .step-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        margin: 0 0 0.75rem;
+        line-height: 1.3;
+    }
+    .step-box .btn-search {
+        width: 100%;
+        margin-top: 0.35rem;
+    }
 </style>
 {% endblock %}
 
 {% block body %}
 {{ messages_json|json_script:"ui-messages" }}
-<div class="container-fluid py-3">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h4 mb-0">SPHEREx</h1>
-        <form action="{% url 'set_language' %}" method="post" class="d-flex align-items-center gap-2">
-            {% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.get_full_path }}">
-            <span class="small text-muted">{% trans "Language" %}</span>
-            <button class="btn btn-sm {% if LANGUAGE_CODE == 'en' %}btn-primary{% else %}btn-outline-secondary{% endif %}" name="language" value="en" type="submit">English</button>
-            <button class="btn btn-sm {% if LANGUAGE_CODE == 'es-419' %}btn-primary{% else %}btn-outline-secondary{% endif %}" name="language" value="es-419" type="submit">Español</button>
-        </form>
+<nav class="navbar navbar-dark site-nav px-3">
+    <span class="navbar-brand mb-0">SPHEREx</span>
+    <div class="dropdown">
+        <button class="btn btn-outline-light btn-sm dropdown-toggle d-inline-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <svg class="lang-globe" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path d="M352 256c0 22.2-1.2 43.6-3.3 64H163.3c-2.2-20.4-3.3-41.8-3.3-64s1.2-43.6 3.3-64H348.7c2.2 20.4 3.3 41.8 3.3 64zm28.8-64H465c11.5 20.2 18.4 43.3 19.8 68-1.4 24.7-8.3 47.8-19.8 68H380.8c2.1-21.5 3.2-43.6 3.2-64s-1.1-42.5-3.2-64zM131.2 256c0 20.4 1.1 42.5 3.2 64H47c-11.5-20.2-18.4-43.3-19.8-68 1.4-24.7 8.3-47.8 19.8-68h87.4c-2.1 21.5-3.2 43.6-3.2 64zm20.8-96h207.8c-6.1-32.5-18.5-61.4-35.4-85.2C307.5 50.2 283.4 32 256 32s-51.5 18.2-68.4 42.8C170.5 98.6 158.1 127.5 152 160zm207.8 192H152c6.1 32.5 18.5 61.4 35.4 85.2C204.5 461.8 228.6 480 256 480s51.5-18.2 68.4-42c16.9-23.8 29.3-52.7 35.4-85.2zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256z"/></svg>
+            {% if LANGUAGE_CODE == "es-419" %}Español{% else %}English{% endif %}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+            <li>
+                <form action="{% url 'set_language' %}" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button class="dropdown-item" name="language" value="en" type="submit">English</button>
+                </form>
+            </li>
+            <li>
+                <form action="{% url 'set_language' %}" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button class="dropdown-item" name="language" value="es-419" type="submit">Español</button>
+                </form>
+            </li>
+        </ul>
     </div>
-    <form method="get" class="sky-layout mb-4">
+</nav>
+<div class="container-fluid py-3">
+    <form method="get" class="sky-layout mb-4" autocomplete="off">
         <div class="sky-form">
-            <div class="mb-2">
-                <label class="form-label mb-1" for="survey">{% trans "Base survey" %}</label>
-                <select id="survey" class="form-select form-select-sm">
-                    <option value="dss2">DSS2 color</option>
-                    <option value="twomass">2MASS color</option>
-                    <option value="allwise">AllWISE color</option>
-                    <option value="sdss">SDSS DR9 color</option>
-                </select>
+            <div id="zone-box" class="step-box">
+                <h2 class="step-title">{% trans "1. Preview" %}</h2>
+                <div class="field-row">
+                    <label class="form-label" for="survey">{% trans "Base survey" %}</label>
+                    <div class="field-control">
+                        <select id="survey" class="form-select form-select-sm">
+                            <option value="dss2">DSS2 color</option>
+                            <option value="twomass">2MASS color</option>
+                            <option value="allwise">AllWISE color</option>
+                            <option value="sdss">SDSS DR9 color</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <label class="form-label" for="{{ form.ra.id_for_label }}">{{ form.ra.label }}</label>
+                    <div class="field-control">
+                        {{ form.ra }}
+                        {% for err in form.ra.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+                    </div>
+                </div>
+                <div class="field-row">
+                    <label class="form-label" for="{{ form.dec.id_for_label }}">{{ form.dec.label }}</label>
+                    <div class="field-control">
+                        {{ form.dec }}
+                        {% for err in form.dec.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+                    </div>
+                </div>
+                <div class="field-row">
+                    <label class="form-label" for="{{ form.fov.id_for_label }}">{{ form.fov.label }}</label>
+                    <div class="field-control">
+                        {{ form.fov }}
+                        {% for err in form.fov.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+                    </div>
+                </div>
+                <div class="field-row">
+                    <label class="form-label" for="{{ form.unit.id_for_label }}">{{ form.unit.label }}</label>
+                    <div class="field-control">{{ form.unit }}</div>
+                </div>
+                <p class="form-text">{% trans "The square on the map is the cutout size; the number uses the unit next to Side. The IRSA search looks for images within 1 arcsec of the point. Maximum side is 1 degree." %}</p>
+                <p id="cutout-summary" class="form-text mb-2"></p>
+                <div class="zone-actions">
+                    <button class="btn btn-outline-primary btn-sm" id="preview-zone" type="button">{% trans "Preview zone" %}</button>
+                    <button class="btn btn-outline-secondary btn-sm" id="save-object" type="button">{% trans "Save object" %}</button>
+                    <button class="btn btn-outline-secondary btn-sm" id="open-object-list" type="button">{% trans "Objects" %}</button>
+                </div>
             </div>
-            {% for field in form %}
-                {% if field.name != "fov" and field.name != "unit" %}
-                <div class="mb-2">
-                    <label class="form-label mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                    {{ field }}
-                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
-                    {% for err in field.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+            <div id="search-box" class="step-box">
+                <h2 class="step-title">{% trans "2. Search SPHEREx data" %}</h2>
+                <div class="field-row">
+                    <label class="form-label" for="{{ form.collection.id_for_label }}">{{ form.collection.label }}</label>
+                    <div class="field-control">
+                        {{ form.collection }}
+                        {% if form.collection.help_text %}<div class="form-text">{{ form.collection.help_text }}</div>{% endif %}
+                        {% for err in form.collection.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+                    </div>
                 </div>
-                {% endif %}
-            {% endfor %}
-            <fieldset id="cutout-box" class="border rounded p-2 mb-3">
-                <legend class="float-none w-auto">{% trans "Cutout" %}</legend>
-                <p class="form-text">{% trans "Square drawn on the map. The number uses the unit next to it. The search covers 1 arcsec around the point. Maximum side is 1 degree." %}</p>
-                <div class="mb-2">
-                    <label class="form-label mb-1" for="{{ form.fov.id_for_label }}">{{ form.fov.label }}</label>
-                    {{ form.fov }}
-                    {% for err in form.fov.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+                <div class="field-row">
+                    <label class="form-label" for="{{ form.detector.id_for_label }}">{{ form.detector.label }}</label>
+                    <div class="field-control">
+                        {{ form.detector }}
+                        {% for err in form.detector.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+                    </div>
                 </div>
-                <div>
-                    <label class="form-label mb-1" for="{{ form.unit.id_for_label }}">{{ form.unit.label }}</label>
-                    {{ form.unit }}
-                </div>
-                <p id="cutout-summary" class="form-text mb-0 mt-2"></p>
-            </fieldset>
-            {% for err in form.non_field_errors %}
-            <div class="alert alert-danger py-2 mb-2">{{ err }}</div>
-            {% endfor %}
+                {% for err in form.non_field_errors %}
+                <div class="alert alert-danger py-2 mb-2">{{ err }}</div>
+                {% endfor %}
+                <button class="btn btn-primary btn-search" type="submit">{% trans "Search" %}</button>
+            </div>
         </div>
         <div class="sky-stage">
             <div id="aladin-lite-div" class="stage-frame"></div>
             <div class="stage-actions">
-                <button class="btn btn-primary" type="submit">{% trans "Search" %}</button>
                 <p class="form-text mb-0">{% trans "Click the map to copy RA and Dec, then search." %} {% trans "The first search and each new FITS file can take a while." %}</p>
             </div>
         </div>
@@ -163,16 +261,19 @@
                 </div>
             </div>
             <div class="stage-actions">
-                <label class="form-label mb-0" for="detector">{% trans "Detector" %}</label>
-                <select id="detector" class="form-select form-select-sm" style="width: auto;">
-                    {% for number in "123456" %}
-                    <option value="{{ number }}" {% if detector == number %}selected{% endif %}>{% blocktrans %}Detector {{ number }}{% endblocktrans %}</option>
-                    {% endfor %}
-                </select>
                 <button type="button" class="btn btn-outline-secondary btn-sm" id="prev">{% trans "Previous" %}</button>
-                <button type="button" class="btn btn-outline-primary btn-sm" id="play">{% trans "Play" %}</button>
+                <button type="button" class="btn btn-outline-primary btn-sm icon-btn" id="play" aria-label="{% trans "Play" %}">
+                    <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M187.2 100.9C174.8 94.1 159.8 94.4 147.6 101.6C135.4 108.8 128 121.9 128 136L128 504C128 518.1 135.5 531.2 147.6 538.4C159.7 545.6 174.8 545.9 187.2 539.1L523.2 355.1C536 348.1 544 334.6 544 320C544 305.4 536 291.9 523.2 284.9L187.2 100.9z"/></svg>
+                    <svg class="icon-pause d-none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" aria-hidden="true"><path d="M48 64C21.5 64 0 85.5 0 112V400c0 26.5 21.5 48 48 48h32c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48H48zm192 0c-26.5 0-48 21.5-48 48V400c0 26.5 21.5 48 48 48h32c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48h-32z"/></svg>
+                </button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" id="next">{% trans "Next" %}</button>
                 <span id="frame-label" class="small text-muted"></span>
+            </div>
+            <div id="play-progress" class="d-none mt-2">
+                <div class="progress" style="height: 0.4rem;" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div id="play-progress-bar" class="progress-bar" style="width: 0%"></div>
+                </div>
+                <div id="play-progress-label" class="small text-muted mt-1"></div>
             </div>
             {% if error %}
             <div class="alert alert-danger mt-2 mb-0">{{ error }}</div>
@@ -204,6 +305,72 @@
         </div>
     </div>
     {% endif %}
+    <div class="modal fade" id="save-object-modal" tabindex="-1" aria-labelledby="save-object-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="save-object-title" data-create="{% trans "Save object" %}" data-edit="{% trans "Edit object" %}">{% trans "Save object" %}</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans "Close" %}"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label" for="object-name">{% trans "Name" %}</label>
+                        <input class="form-control" id="object-name" maxlength="80" autocomplete="off">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label" for="object-ra">{% trans "Right ascension" %}</label>
+                        <input class="form-control" id="object-ra" maxlength="50" autocomplete="off">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label" for="object-dec">{% trans "Declination" %}</label>
+                        <input class="form-control" id="object-dec" maxlength="50" autocomplete="off">
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-7">
+                            <label class="form-label" for="object-fov">{% trans "Side" %}</label>
+                            <input class="form-control" id="object-fov" type="number" min="0.1" step="0.1">
+                        </div>
+                        <div class="col-5">
+                            <label class="form-label" for="object-unit">{% trans "Unit" %}</label>
+                            <select class="form-select" id="object-unit">
+                                <option value="arcsec">{% trans "Arcseconds" %}</option>
+                                <option value="arcmin">{% trans "Arcminutes" %}</option>
+                                <option value="deg">{% trans "Degrees" %}</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p id="object-error" class="text-danger small d-none mt-2 mb-0"
+                       data-need-name="{% trans "Enter a name." %}"
+                       data-bad-coordinates="{% trans "RA and Dec could not be read." %}"
+                       data-bad-size="{% trans "The cutout size must be greater than zero." %}"
+                       data-too-big="{% trans "In this version the maximum cutout is 1 degree." %}"
+                       data-full="{% trans "The object list is full." %}"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+                    <button type="button" class="btn btn-primary" id="object-confirm">{% trans "Save" %}</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="object-list-modal" tabindex="-1" aria-labelledby="object-list-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="object-list-title">{% trans "Saved objects" %}</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans "Close" %}"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="object-items" data-edit="{% trans "Edit" %}" data-delete="{% trans "Delete" %}"></div>
+                    <p id="object-empty" class="text-muted small mb-0">{% trans "No saved objects yet." %}</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary btn-sm me-auto" id="object-add">{% trans "Add object" %}</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">{% trans "Close" %}</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -225,6 +392,9 @@
     let requestId = 0;
     let blobUrl = null;
     let playing = false;
+    let frameMs = null;
+    let countdownTimer = null;
+    let countdownAnchor = null;
     const results = document.getElementById("results");
     if (results?.dataset.scroll === "1") {
         if ("scrollRestoration" in history) {
@@ -313,9 +483,15 @@
         }
         cursor = (index + frames.length) % frames.length;
         highlight({follow});
+        if (playing && frameMs != null) {
+            armCountdown(cursor + 1, frames.length);
+        }
         const item = frames[cursor];
         const myRequest = ++requestId;
+        const startedAt = performance.now();
+        let loaded = false;
         setLoading(true);
+        message.classList.add("d-none");
         frameLabel.textContent = `${cursor + 1} / ${frames.length}`;
         try {
             const response = await fetch(cutoutUrl(item.dataset.id));
@@ -340,6 +516,7 @@
             cutout.src = blobUrl;
             cutout.classList.remove("d-none");
             message.classList.add("d-none");
+            loaded = true;
         } catch (error) {
             if (myRequest !== requestId) {
                 return;
@@ -350,6 +527,14 @@
         } finally {
             if (myRequest === requestId) {
                 setLoading(false);
+                if (loaded) {
+                    const elapsed = performance.now() - startedAt;
+                    const firstSample = frameMs == null;
+                    frameMs = firstSample ? elapsed : frameMs * 0.6 + elapsed * 0.4;
+                    if (playing && firstSample) {
+                        armCountdown(cursor + 1, visibleFrames().length);
+                    }
+                }
             }
         }
     }
@@ -370,7 +555,72 @@
             releaseWait = null;
             release();
         }
-        playButton.textContent = messages.play;
+        setPlayIcon(false);
+        hideProgress();
+    }
+
+    function stopCountdown() {
+        if (countdownTimer) {
+            clearInterval(countdownTimer);
+            countdownTimer = null;
+        }
+        countdownAnchor = null;
+    }
+
+    function setPlayIcon(active) {
+        playButton.querySelector(".icon-play").classList.toggle("d-none", active);
+        playButton.querySelector(".icon-pause").classList.toggle("d-none", !active);
+        playButton.setAttribute("aria-label", active ? messages.pause : messages.play);
+    }
+
+    function formatDuration(ms) {
+        const seconds = Math.max(0, Math.round(ms / 1000));
+        const minutes = Math.floor(seconds / 60);
+        const rest = seconds % 60;
+        if (!minutes) {
+            return `${rest} s`;
+        }
+        return `${minutes}:${String(rest).padStart(2, "0")}`;
+    }
+
+    function hideProgress() {
+        stopCountdown();
+        document.getElementById("play-progress").classList.add("d-none");
+    }
+
+    function armCountdown(shown, total) {
+        const perFrame = frameMs == null ? null : frameMs + 800;
+        const framesLeft = Math.max(0, total - shown + 1);
+        countdownAnchor = {
+            shown,
+            total,
+            remainingMs: perFrame == null ? null : framesLeft * perFrame,
+            at: performance.now(),
+        };
+        paintCountdown();
+    }
+
+    function paintCountdown() {
+        const anchor = countdownAnchor;
+        const wrap = document.getElementById("play-progress");
+        const bar = document.getElementById("play-progress-bar");
+        const label = document.getElementById("play-progress-label");
+        if (!anchor || !wrap) {
+            return;
+        }
+        wrap.classList.remove("d-none");
+        const pct = anchor.total ? Math.round((anchor.shown / anchor.total) * 100) : 0;
+        bar.style.width = `${pct}%`;
+        bar.parentElement.setAttribute("aria-valuenow", String(pct));
+        if (anchor.remainingMs == null) {
+            label.textContent = messages.measuring;
+            return;
+        }
+        const left = Math.max(0, anchor.remainingMs - (performance.now() - anchor.at));
+        label.textContent = messages.progress
+            .replace("%(done)s", anchor.shown)
+            .replace("%(total)s", anchor.total)
+            .replace("%(eta)s", formatDuration(left));
     }
 
     function wait(ms) {
@@ -408,7 +658,10 @@
             return;
         }
         playing = true;
-        playButton.textContent = messages.pause;
+        setPlayIcon(true);
+        frameMs = null;
+        armCountdown(0, visibleFrames().length);
+        countdownTimer = setInterval(paintCountdown, 250);
         playLoop();
     }
 
@@ -470,13 +723,6 @@
     }
 
     updateCount();
-    if (viewer.dataset.ra && visibleFrames().length === 0) {
-        const first = [...list.querySelectorAll("[data-detector]")].find((item) => item.dataset.detector);
-        if (first) {
-            detectorSelect.value = first.dataset.detector;
-            updateCount();
-        }
-    }
     warnIfEmpty();
     }
 </script>
@@ -495,20 +741,26 @@
     };
 
     function parseCoordinate(text, isRa) {
-        const value = text.trim();
+        const value = text.trim()
+            .replace(/[\u2212\u2010\u2011\u2012\u2013\u2014\uFE63\uFF0D]/g, "-")
+            .replace(/°/g, "d")
+            .replace(/[′'ʹ]/g, "m")
+            .replace(/[″"ʺ]/g, "s")
+            .replace(/\s+/g, " ");
+        if (!value) {
+            return null;
+        }
         if (/^[+-]?\d+(?:\.\d+)?$/.test(value)) {
             return Number(value);
         }
-        const sexagesimal = value.match(/^([+-]?\d+(?:\.\d+)?)(?:h|d|:)\s*(\d+(?:\.\d+)?)[m:]?\s*(\d+(?:\.\d+)?)s?$/i);
+        const sexagesimal = value.match(/^([+-]?\d+(?:\.\d+)?)(?:h|d|:| )\s*(\d+(?:\.\d+)?)(?:m|:| )?\s*(\d+(?:\.\d+)?)s?$/i);
         if (!sexagesimal) {
             return null;
         }
         const sign = sexagesimal[1].startsWith("-") ? -1 : 1;
         const angle = sign * (Math.abs(Number(sexagesimal[1])) + Number(sexagesimal[2]) / 60 + Number(sexagesimal[3]) / 3600);
-        if (isRa && (/h/i.test(value) || (value.includes(":") && !/d/i.test(value)))) {
-            return angle * 15;
-        }
-        return angle;
+        const hours = isRa && !/d/i.test(value);
+        return hours ? angle * 15 : angle;
     }
 
     function skyPosition() {
@@ -545,6 +797,52 @@
         aladin.setBaseImageLayer(layer);
     }
 
+    const raField = document.getElementById("ra");
+    const decField = document.getElementById("dec");
+    const skyForm = raField.closest("form");
+    raField.value = raField.defaultValue;
+    decField.value = decField.defaultValue;
+
+    function unlockCoordinate(input) {
+        input.removeAttribute("readonly");
+        input.style.color = "#212529";
+    }
+
+    for (const input of [raField, decField]) {
+        input.addEventListener("pointerdown", () => unlockCoordinate(input));
+        input.addEventListener("focus", () => unlockCoordinate(input));
+        input.addEventListener("input", () => {
+            unlockCoordinate(input);
+            input.style.color = "#212529";
+        });
+        input.addEventListener("paste", () => {
+            unlockCoordinate(input);
+            queueMicrotask(() => {
+                input.style.color = "#212529";
+            });
+        });
+    }
+
+    function syncQueryUrl() {
+        const url = new URL(window.location.href);
+        const params = url.searchParams;
+        for (const name of ["ra", "dec", "fov", "unit", "collection", "detector"]) {
+            const field = skyForm.elements.namedItem(name);
+            if (!field) {
+                continue;
+            }
+            const value = String(field.value ?? "").trim();
+            if (value) {
+                params.set(name, value);
+            } else {
+                params.delete(name);
+            }
+        }
+        history.replaceState({}, "", `${url.pathname}?${params.toString()}${url.hash}`);
+    }
+
+    let refreshMap = () => {};
+
     try {
         await A.init;
         const aladin = A.aladin(map, {
@@ -559,13 +857,24 @@
         const cutoutOverlay = A.graphicOverlay({name: "cutout", color: "#00e5ff", lineWidth: 2});
         aladin.addOverlay(cutoutOverlay);
 
+        let activeSurvey = null;
+        function ensureSurvey() {
+            const key = document.getElementById("survey").value;
+            if (key === activeSurvey) {
+                return;
+            }
+            showSurvey(aladin, key);
+            activeSurvey = key;
+        }
+
         function drawCutout({recenter = false, zoom = false} = {}) {
             const position = skyPosition();
             const side = cutoutSideDeg();
-            updateSummary();
             if (!position || side == null) {
+                summary.textContent = messages.coordinatesUnread;
                 return;
             }
+            updateSummary();
             const halfDec = side / 2;
             const cosine = Math.cos(position.dec * Math.PI / 180);
             const halfRa = halfDec / (Math.abs(cosine) < 0.05 ? 0.05 : cosine);
@@ -584,30 +893,272 @@
             }
         }
 
-        showSurvey(aladin, document.getElementById("survey").value);
-        drawCutout();
-        document.getElementById("survey").addEventListener("change", (event) => {
-            showSurvey(aladin, event.target.value);
-        });
-        for (const id of ["ra", "dec"]) {
-            document.getElementById(id).addEventListener("change", () => drawCutout({recenter: true}));
-        }
-        for (const id of ["fov", "unit"]) {
-            document.getElementById(id).addEventListener("input", () => drawCutout({zoom: true}));
-            document.getElementById(id).addEventListener("change", () => drawCutout({zoom: true}));
-        }
+        refreshMap = () => {
+            syncQueryUrl();
+            ensureSurvey();
+            drawCutout({recenter: true, zoom: true});
+        };
+        ensureSurvey();
+        drawCutout({recenter: true, zoom: true});
+        document.getElementById("preview-zone").addEventListener("click", refreshMap);
         aladin.on("click", (event) => {
             const ra = event && (event.ra ?? event.detail?.ra);
             const dec = event && (event.dec ?? event.detail?.dec);
             if (ra == null || dec == null || event.isDragging) {
                 return;
             }
-            document.getElementById("ra").value = Number(ra).toFixed(6);
-            document.getElementById("dec").value = Number(dec).toFixed(6);
+            unlockCoordinate(raField);
+            unlockCoordinate(decField);
+            raField.value = Number(ra).toFixed(6);
+            decField.value = Number(dec).toFixed(6);
             drawCutout();
         });
     } catch (error) {
         map.textContent = messages.mapFailed;
     }
+
+    skyForm.addEventListener("submit", () => {
+        syncQueryUrl();
+    });
+
+    const OBJECT_COOKIE = "spherex_objects";
+    const OBJECT_LIMIT = 24;
+    const saveModalEl = document.getElementById("save-object-modal");
+    const listModalEl = document.getElementById("object-list-modal");
+    const saveModal = bootstrap.Modal.getOrCreateInstance(saveModalEl);
+    const listModal = bootstrap.Modal.getOrCreateInstance(listModalEl);
+    const objectName = document.getElementById("object-name");
+    const objectRa = document.getElementById("object-ra");
+    const objectDec = document.getElementById("object-dec");
+    const objectFov = document.getElementById("object-fov");
+    const objectUnit = document.getElementById("object-unit");
+    const objectError = document.getElementById("object-error");
+    const objectItems = document.getElementById("object-items");
+    const objectTitle = document.getElementById("save-object-title");
+    let editingId = null;
+    let returnToList = false;
+
+    function readObjects() {
+        const prefix = `${OBJECT_COOKIE}=`;
+        const row = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(prefix));
+        if (!row) {
+            return [];
+        }
+        try {
+            const parsed = JSON.parse(decodeURIComponent(row.slice(prefix.length)));
+            if (!Array.isArray(parsed)) {
+                return [];
+            }
+            return parsed.filter((item) => item
+                && typeof item.id === "string"
+                && typeof item.name === "string"
+                && typeof item.ra === "string"
+                && typeof item.dec === "string"
+                && typeof item.fov === "string"
+                && ["arcsec", "arcmin", "deg"].includes(item.unit));
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function writeObjects(objects) {
+        const payload = encodeURIComponent(JSON.stringify(objects));
+        if (`${OBJECT_COOKIE}=${payload}`.length > 4000) {
+            return false;
+        }
+        document.cookie = `${OBJECT_COOKIE}=${payload}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        return true;
+    }
+
+    function showObjectError(key) {
+        objectError.textContent = objectError.dataset[key] || "";
+        objectError.classList.remove("d-none");
+    }
+
+    function currentZone() {
+        return {
+            ra: raField.value.trim(),
+            dec: decField.value.trim(),
+            fov: document.getElementById("fov").value,
+            unit: document.getElementById("unit").value,
+        };
+    }
+
+    function zoneError(zone) {
+        const ra = parseCoordinate(zone.ra, true);
+        const dec = parseCoordinate(zone.dec, false);
+        if (ra == null || dec == null || !Number.isFinite(ra) || !Number.isFinite(dec) || dec < -90 || dec > 90) {
+            return "badCoordinates";
+        }
+        const factors = {arcsec: 1, arcmin: 60, deg: 3600};
+        const arcsec = Number(zone.fov) * factors[zone.unit];
+        if (!Number.isFinite(arcsec) || arcsec <= 0) {
+            return "badSize";
+        }
+        if (arcsec > 3600) {
+            return "tooBig";
+        }
+        return "";
+    }
+
+    function applyToForm(item) {
+        unlockCoordinate(raField);
+        unlockCoordinate(decField);
+        raField.value = item.ra;
+        decField.value = item.dec;
+        document.getElementById("fov").value = item.fov;
+        document.getElementById("unit").value = item.unit;
+        refreshMap();
+    }
+
+    function openEditor({item = null, fromList = false} = {}) {
+        returnToList = fromList;
+        editingId = item ? item.id : null;
+        const zone = item || currentZone();
+        objectTitle.textContent = item ? objectTitle.dataset.edit : objectTitle.dataset.create;
+        objectName.value = item ? item.name : "";
+        objectRa.value = zone.ra;
+        objectDec.value = zone.dec;
+        objectFov.value = zone.fov;
+        objectUnit.value = zone.unit;
+        objectError.classList.add("d-none");
+        const show = () => saveModal.show();
+        if (fromList && listModalEl.classList.contains("show")) {
+            listModalEl.addEventListener("hidden.bs.modal", show, {once: true});
+            listModal.hide();
+            return;
+        }
+        show();
+    }
+
+    function renderList() {
+        const objects = readObjects();
+        objectItems.replaceChildren();
+        document.getElementById("object-empty").classList.toggle("d-none", objects.length > 0);
+        for (const item of objects) {
+            const row = document.createElement("div");
+            row.className = "border rounded p-2 mb-2";
+            row.dataset.id = item.id;
+            const head = document.createElement("div");
+            head.className = "d-flex justify-content-between align-items-start gap-2";
+            const load = document.createElement("button");
+            load.type = "button";
+            load.className = "btn btn-link p-0 text-start";
+            load.dataset.action = "load";
+            load.textContent = item.name;
+            const actions = document.createElement("div");
+            actions.className = "d-flex gap-1 flex-shrink-0";
+            const edit = document.createElement("button");
+            edit.type = "button";
+            edit.className = "btn btn-outline-secondary btn-sm";
+            edit.dataset.action = "edit";
+            edit.textContent = objectItems.dataset.edit;
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "btn btn-outline-danger btn-sm";
+            remove.dataset.action = "delete";
+            remove.textContent = objectItems.dataset.delete;
+            actions.append(edit, remove);
+            head.append(load, actions);
+            const meta = document.createElement("div");
+            meta.className = "small text-muted mt-1";
+            const unit = objectUnit.querySelector(`option[value="${item.unit}"]`);
+            meta.textContent = `${item.ra} · ${item.dec} · ${item.fov} ${unit ? unit.textContent : item.unit}`;
+            row.append(head, meta);
+            objectItems.append(row);
+        }
+    }
+
+    function confirmSave() {
+        const name = objectName.value.trim();
+        if (!name) {
+            showObjectError("needName");
+            objectName.focus();
+            return;
+        }
+        const zone = {
+            ra: objectRa.value.trim(),
+            dec: objectDec.value.trim(),
+            fov: objectFov.value,
+            unit: objectUnit.value,
+        };
+        const problem = zoneError(zone);
+        if (problem) {
+            showObjectError(problem);
+            return;
+        }
+        const objects = readObjects();
+        const item = {
+            id: editingId || (crypto.randomUUID ? crypto.randomUUID() : `o${Date.now().toString(36)}`),
+            name,
+            ...zone,
+            fov: String(zone.fov),
+        };
+        const next = editingId
+            ? objects.map((stored) => stored.id === editingId ? item : stored)
+            : [item, ...objects];
+        if (!editingId && next.length > OBJECT_LIMIT) {
+            showObjectError("full");
+            return;
+        }
+        if (!writeObjects(next)) {
+            showObjectError("full");
+            return;
+        }
+        objectError.classList.add("d-none");
+        if (!returnToList) {
+            applyToForm(item);
+        }
+        saveModal.hide();
+    }
+
+    saveModalEl.addEventListener("shown.bs.modal", () => {
+        objectName.focus();
+        objectName.select();
+    });
+    saveModalEl.addEventListener("hidden.bs.modal", () => {
+        if (!returnToList) {
+            return;
+        }
+        returnToList = false;
+        renderList();
+        listModal.show();
+    });
+    saveModalEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && event.target.matches("input, select")) {
+            event.preventDefault();
+            confirmSave();
+        }
+    });
+    document.getElementById("save-object").addEventListener("click", () => openEditor());
+    document.getElementById("object-confirm").addEventListener("click", confirmSave);
+    document.getElementById("open-object-list").addEventListener("click", () => {
+        renderList();
+        listModal.show();
+    });
+    document.getElementById("object-add").addEventListener("click", () => openEditor({fromList: true}));
+    objectItems.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-action]");
+        if (!button) {
+            return;
+        }
+        const row = button.closest("[data-id]");
+        const item = readObjects().find((stored) => stored.id === row.dataset.id);
+        if (!item) {
+            renderList();
+            return;
+        }
+        if (button.dataset.action === "delete") {
+            writeObjects(readObjects().filter((stored) => stored.id !== item.id));
+            renderList();
+            return;
+        }
+        if (button.dataset.action === "edit") {
+            openEditor({item, fromList: true});
+            return;
+        }
+        applyToForm(item);
+        listModal.hide();
+    });
 </script>
 {% endblock %}

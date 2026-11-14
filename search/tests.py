@@ -5,6 +5,7 @@ from unittest.mock import patch
 import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
+from astropy.wcs import WCS
 from django.core.files.storage import FileSystemStorage
 from django.test import SimpleTestCase, override_settings
 
@@ -119,3 +120,35 @@ class FitsImageCacheTests(SimpleTestCase):
 
         self.assertEqual(len(calls), 1)
         self.assertTrue(second.exists())
+
+
+class CoordinateParseTests(SimpleTestCase):
+    def test_unicode_minus_and_dashes_keep_the_southern_declination(self):
+        ascii_coord = services.parse_coordinates("22h03m21.65363s", "-56d47m09.5228s")
+        for dec in ("\u221256d47m09.5228s", "\u201356d47m09.5228s", "\u201456d47m09.5228s"):
+            coord = services.parse_coordinates("22h03m21.65363s", dec)
+            self.assertAlmostEqual(coord.ra.deg, ascii_coord.ra.deg)
+            self.assertAlmostEqual(coord.dec.deg, ascii_coord.dec.deg)
+            self.assertLess(coord.dec.deg, 0)
+
+    def test_normalize_angle_rewrites_the_unicode_minus(self):
+        self.assertEqual(services.normalize_angle("\u221256d47m09.5228s"), "-56d47m09.5228s")
+
+
+class CutoutOrientationTests(SimpleTestCase):
+    def test_north_east_pixel_moves_to_the_top_left(self):
+        header = fits.Header()
+        header["CTYPE1"] = "RA---TAN"
+        header["CTYPE2"] = "DEC--TAN"
+        header["CRPIX1"] = 3
+        header["CRPIX2"] = 3
+        header["CRVAL1"] = 10.0
+        header["CRVAL2"] = 0.0
+        header["CDELT1"] = 0.1
+        header["CDELT2"] = 0.1
+        data = np.zeros((5, 5))
+        data[3, 3] = 5
+        oriented = services._orient_north_up_east_left(data, WCS(header))
+        row, column = np.unravel_index(np.nanargmax(oriented), oriented.shape)
+        self.assertLess(row, 2.5)
+        self.assertLess(column, 2.5)

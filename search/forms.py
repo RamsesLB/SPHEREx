@@ -14,6 +14,8 @@ class CoordinateForm(forms.Form):
             "class": "form-control",
             "id": "ra",
             "placeholder": "08h55m10.831s",
+            "autocomplete": "off",
+            "readonly": True,
         }),
     )
     dec = forms.CharField(
@@ -25,6 +27,8 @@ class CoordinateForm(forms.Form):
             "class": "form-control",
             "id": "dec",
             "placeholder": "-7d14m42.53s",
+            "autocomplete": "off",
+            "readonly": True,
         }),
     )
     collection = forms.ChoiceField(
@@ -33,6 +37,13 @@ class CoordinateForm(forms.Form):
         choices=(),
         help_text=_("Only this SPHEREx release is searched. New releases appear in this list."),
         widget=forms.Select(attrs={"class": "form-select", "id": "collection"}),
+    )
+    detector = forms.ChoiceField(
+        label=_("Detector"),
+        required=False,
+        choices=[(str(number), str(number)) for number in range(1, 7)],
+        initial="2",
+        widget=forms.Select(attrs={"class": "form-select", "id": "detector"}),
     )
     fov = forms.FloatField(
         label=_("Side"),
@@ -69,6 +80,26 @@ class CoordinateForm(forms.Form):
         self.fields["collection"].choices = choices
         if not self.is_bound:
             self.fields["collection"].initial = services.default_collection(names)
+        self.fields["detector"].choices = [
+            (str(number), _("Detector %(number)s") % {"number": number})
+            for number in range(1, 7)
+        ]
+        if not self.is_bound:
+            for name in ("ra", "dec"):
+                attrs = self.fields[name].widget.attrs
+                attrs["class"] = f"{attrs.get('class', '')} is-example".strip()
+
+    def clean_ra(self):
+        return services.normalize_angle(self.cleaned_data.get("ra", ""))
+
+    def clean_dec(self):
+        return services.normalize_angle(self.cleaned_data.get("dec", ""))
+
+    def clean_detector(self):
+        value = self.cleaned_data.get("detector") or "2"
+        if value not in {"1", "2", "3", "4", "5", "6"}:
+            return "2"
+        return value
 
     def clean_collection(self):
         value = self.cleaned_data.get("collection")

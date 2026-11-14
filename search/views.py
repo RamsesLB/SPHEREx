@@ -19,9 +19,6 @@ def index(request):
     error = None
     info = None
     searched = False
-    detector = request.GET.get("detector", "2")
-    if detector not in {"1", "2", "3", "4", "5", "6"}:
-        detector = "2"
 
     if has_query:
         searched = True
@@ -59,7 +56,6 @@ def index(request):
         "error": error,
         "info": info,
         "searched": searched,
-        "detector": detector,
         "target_ra": target_ra,
         "target_dec": target_dec,
         "map_fov": _map_fov(form),
@@ -158,5 +154,8 @@ def _js_messages():
         "play": _("Play"),
         "pause": _("Pause"),
         "mapFailed": _("The map could not start. You can still type coordinates."),
+        "coordinatesUnread": _("RA and Dec could not be read."),
         "cutoutSize": _("%(size)s × %(size)s"),
+        "measuring": _("Timing the first image…"),
+        "progress": _("%(done)s / %(total)s · %(eta)s left"),
     }

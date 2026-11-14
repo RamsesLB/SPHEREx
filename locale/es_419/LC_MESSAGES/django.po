@@ -105,6 +105,12 @@ msgstr "Pausa"
 msgid "Play"
 msgstr "Reproducir"
 
+msgid "Preview zone"
+msgstr "Previsualizar zona"
+
+msgid "RA and Dec could not be read."
+msgstr "No se pudo leer RA y Dec."
+
 msgid "Previous"
 msgstr "Anterior"
 
@@ -141,8 +147,14 @@ msgstr "Lado"
 msgid "SPHEREx cutout"
 msgstr "Recorte SPHEREx"
 
-msgid "Square drawn on the map. The number uses the unit next to it. The search covers 1 arcsec around the point. Maximum side is 1 degree."
-msgstr "Cuadrado dibujado en el mapa. El número usa la unidad de al lado. La búsqueda cubre 1 arcsec alrededor del punto. El lado máximo es 1 grado."
+msgid "The square on the map is the cutout size; the number uses the unit next to Side. The IRSA search looks for images within 1 arcsec of the point. Maximum side is 1 degree."
+msgstr "El cuadrado en el mapa es el tamaño del recorte; el número usa la unidad junto a Lado. La búsqueda en IRSA busca imágenes a 1 arcsec del punto. El lado máximo es 1 grado."
+
+msgid "1. Preview"
+msgstr "1. Previsualizar"
+
+msgid "2. Search SPHEREx data"
+msgstr "2. Buscar datos SPHEREx"
 
 msgid "The FITS file could not be downloaded from IRSA."
 msgstr "No se pudo descargar el archivo FITS desde IRSA."
@@ -165,8 +177,14 @@ msgstr "El tamaño del recorte no es un número."
 msgid "The cutout size must be greater than zero."
 msgstr "El tamaño del recorte debe ser mayor que cero."
 
+msgid "%(done)s / %(total)s · %(eta)s left"
+msgstr "%(done)s / %(total)s · faltan %(eta)s"
+
 msgid "The cutout was empty."
 msgstr "El recorte llegó vacío."
+
+msgid "Timing the first image…"
+msgstr "Midiendo la primera imagen…"
 
 msgid "The first search and each new FITS file can take a while."
 msgstr "La primera búsqueda y cada archivo FITS nuevo pueden tardar."
@@ -182,3 +200,42 @@ msgstr "Unidad"
 
 msgid "Unknown size unit."
 msgstr "Unidad de tamaño desconocida."
+
+msgid "Save object"
+msgstr "Guardar objeto"
+
+msgid "Objects"
+msgstr "Objetos"
+
+msgid "Saved objects"
+msgstr "Objetos guardados"
+
+msgid "Name"
+msgstr "Nombre"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Save"
+msgstr "Guardar"
+
+msgid "Edit"
+msgstr "Editar"
+
+msgid "Edit object"
+msgstr "Editar objeto"
+
+msgid "Delete"
+msgstr "Eliminar"
+
+msgid "Add object"
+msgstr "Agregar objeto"
+
+msgid "No saved objects yet."
+msgstr "Todavía no hay objetos guardados."
+
+msgid "Enter a name."
+msgstr "Escribe un nombre."
+
+msgid "The object list is full."
+msgstr "La lista de objetos está llena."

@@ -40,6 +40,17 @@ FALLBACK_COLLECTIONS = (
 SEARCH_RADIUS = 1 * u.arcsec
 MAX_RESULTS = 80
 _COLLECTION_CACHE = {"expires": 0.0, "names": []}
+# Wikipedia and Aladin often paste a minus that is not the ASCII hyphen.
+_ANGLE_DASHES = str.maketrans({
+    "\u2212": "-",
+    "\u2010": "-",
+    "\u2011": "-",
+    "\u2012": "-",
+    "\u2013": "-",
+    "\u2014": "-",
+    "\ufe63": "-",
+    "\uff0d": "-",
+})
 
 # Longitud de onda central aproximada de cada detector, en micrones.
 DETECTOR_BANDS = (
@@ -56,9 +67,13 @@ class SearchError(Exception):
     """Error que se puede mostrar en la página."""
 
 
+def normalize_angle(text):
+    return " ".join(str(text).translate(_ANGLE_DASHES).strip().split())
+
+
 def parse_coordinates(ra, dec):
-    ra_text = " ".join(str(ra).strip().split())
-    dec_text = " ".join(str(dec).strip().split())
+    ra_text = normalize_angle(ra)
+    dec_text = normalize_angle(dec)
     if not ra_text or not dec_text:
         raise SearchError(_("Missing RA and Dec."))
 
@@ -195,7 +210,7 @@ def render_cutout(image, coord, fov_arcsec):
         )
     except NoOverlapError as exc:
         raise SearchError(_("This observation does not cover the requested position.")) from exc
-    return _stretch_to_png(cutout.data)
+    return _stretch_to_png(cutout.data, cutout.wcs)
 
 
 def collection_choices():
@@ -367,8 +382,71 @@ def _open_image(url, *, native=False):
     raise SearchError(_("The FITS file could not be downloaded from IRSA."))
 
 
-def _stretch_to_png(data):
+def _orient_north_up_east_left(data, wcs):
+    """Match Aladin's ICRS view: north up, east left."""
     array = np.asarray(data, dtype=np.float64)
+    if wcs is None or array.ndim != 2 or min(array.shape) < 2:
+        return np.flipud(array)
+    height, width = array.shape
+    center_x = (width - 1) / 2
+    center_y = (height - 1) / 2
+    try:
+        center = wcs.pixel_to_world(center_x, center_y)
+        scales = wcs.proj_plane_pixel_scales()
+        if hasattr(scales, "to"):
+            degrees = np.atleast_1d(scales.to(u.deg).value)
+        else:
+            degrees = [
+                float(scale.to(u.deg).value) if hasattr(scale, "to") else float(scale)
+                for scale in scales
+            ]
+        step = float(np.mean(np.abs(degrees)))
+    except Exception:
+        logger.exception("Could not read the cutout orientation")
+        return np.flipud(array)
+    if not np.isfinite(step) or step <= 0:
+        return np.flipud(array)
+
+    rows, columns = np.indices(array.shape)
+    delta_north = (center_y - rows) * step * u.deg
+    delta_east = (center_x - columns) * step * u.deg
+    try:
+        sky = center.spherical_offsets_by(delta_east, delta_north)
+        pixel_x, pixel_y = wcs.world_to_pixel(sky)
+    except Exception:
+        logger.exception("Could not orient the cutout to the north")
+        return np.flipud(array)
+    return _bilinear(
+        array,
+        np.asarray(pixel_x, dtype=np.float64),
+        np.asarray(pixel_y, dtype=np.float64),
+    )
+
+
+def _bilinear(array, pixel_x, pixel_y):
+    height, width = array.shape
+    x0 = np.floor(pixel_x).astype(np.int32)
+    y0 = np.floor(pixel_y).astype(np.int32)
+    x1 = x0 + 1
+    y1 = y0 + 1
+    weight_x = pixel_x - x0
+    weight_y = pixel_y - y0
+    valid = (x0 >= 0) & (x1 < width) & (y0 >= 0) & (y1 < height) & np.isfinite(pixel_x) & np.isfinite(pixel_y)
+    x0 = np.clip(x0, 0, width - 1)
+    x1 = np.clip(x1, 0, width - 1)
+    y0 = np.clip(y0, 0, height - 1)
+    y1 = np.clip(y1, 0, height - 1)
+    sampled = (
+        array[y0, x0] * (1 - weight_x) * (1 - weight_y)
+        + array[y0, x1] * weight_x * (1 - weight_y)
+        + array[y1, x0] * (1 - weight_x) * weight_y
+        + array[y1, x1] * weight_x * weight_y
+    )
+    return np.where(valid, sampled, np.nan)
+
+
+def _stretch_to_png(data, wcs=None):
+    array = _orient_north_up_east_left(data, wcs)
     if array.ndim != 2 or array.size == 0:
         raise SearchError(_("The cutout was empty."))
 
@@ -384,7 +462,7 @@ def _stretch_to_png(data):
             scaled = np.clip(np.nan_to_num(scaled, nan=0.0), 0, 1)
             scaled = (scaled * 255).astype(np.uint8)
 
-    return Image.fromarray(np.flipud(scaled), mode="L")
+    return Image.fromarray(scaled, mode="L")
 
 
 def _cutout_cache_path(image_id, ra_deg, dec_deg, fov_arcsec):
