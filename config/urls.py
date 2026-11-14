@@ -19,6 +19,7 @@ from django.urls import path, include
 from django.views.generic.base import RedirectView 
 
 urlpatterns = [
+    path('i18n/', include('django.conf.urls.i18n')),
     path('admin/', admin.site.urls),
     path('', include('search.urls')),
     path('favicon.ico', RedirectView.as_view(url='/static/favicon.ico', permanent=True)), # Give browser the icon

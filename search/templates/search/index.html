@@ -1,5 +1,573 @@
 {% extends "search/layout.html" %}
+{% load i18n l10n %}
+
+{% block title %}SPHEREx{% endblock %}
+
+{% block extra_head %}
+<style>
+    .sky-layout {
+        --stage-h: min(calc(100vh - 11rem), 780px);
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 1.75rem;
+    }
+    .sky-form { flex: 0 0 22rem; width: 22rem; }
+    .sky-form .form-text { font-size: 0.75rem; margin-bottom: 0; }
+    .stage-frame {
+        width: min(calc(var(--stage-h) * 1.22), calc(100vw - 26rem));
+        height: var(--stage-h);
+    }
+    .stage-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 0.75rem;
+        margin-top: 0.75rem;
+    }
+    #survey { width: 100%; }
+    @media (max-width: 991.98px) {
+        .sky-layout { flex-direction: column; align-items: stretch; }
+        .sky-form { flex-basis: auto; width: 100%; }
+        .stage-frame { width: 100%; }
+    }
+    #results {
+        scroll-margin-top: 0.75rem;
+        min-height: calc(100vh - 1.5rem);
+    }
+    #viewer {
+        background: #111;
+        color: #ddd;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+    }
+    #cutout {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        image-rendering: pixelated;
+    }
+    #result-list { max-height: calc(var(--stage-h) - 1.75rem); overflow: auto; }
+    #cutout-box legend { font-size: 1rem; padding: 0 0.4rem; }
+</style>
+{% endblock %}
 
 {% block body %}
-Hello NASA!
+{{ messages_json|json_script:"ui-messages" }}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 mb-0">SPHEREx</h1>
+        <form action="{% url 'set_language' %}" method="post" class="d-flex align-items-center gap-2">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <span class="small text-muted">{% trans "Language" %}</span>
+            <button class="btn btn-sm {% if LANGUAGE_CODE == 'en' %}btn-primary{% else %}btn-outline-secondary{% endif %}" name="language" value="en" type="submit">English</button>
+            <button class="btn btn-sm {% if LANGUAGE_CODE == 'es-419' %}btn-primary{% else %}btn-outline-secondary{% endif %}" name="language" value="es-419" type="submit">Español</button>
+        </form>
+    </div>
+    <form method="get" class="sky-layout mb-4">
+        <div class="sky-form">
+            <div class="mb-2">
+                <label class="form-label mb-1" for="survey">{% trans "Base survey" %}</label>
+                <select id="survey" class="form-select form-select-sm">
+                    <option value="dss2">DSS2 color</option>
+                    <option value="twomass">2MASS color</option>
+                    <option value="allwise">AllWISE color</option>
+                    <option value="sdss">SDSS DR9 color</option>
+                </select>
+            </div>
+            {% for field in form %}
+                {% if field.name != "fov" and field.name != "unit" %}
+                <div class="mb-2">
+                    <label class="form-label mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                    {% for err in field.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+                </div>
+                {% endif %}
+            {% endfor %}
+            <fieldset id="cutout-box" class="border rounded p-2 mb-3">
+                <legend class="float-none w-auto">{% trans "Cutout" %}</legend>
+                <p class="form-text">{% trans "Square drawn on the map. The number uses the unit next to it. The search covers 1 arcsec around the point. Maximum side is 1 degree." %}</p>
+                <div class="mb-2">
+                    <label class="form-label mb-1" for="{{ form.fov.id_for_label }}">{{ form.fov.label }}</label>
+                    {{ form.fov }}
+                    {% for err in form.fov.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+                </div>
+                <div>
+                    <label class="form-label mb-1" for="{{ form.unit.id_for_label }}">{{ form.unit.label }}</label>
+                    {{ form.unit }}
+                </div>
+                <p id="cutout-summary" class="form-text mb-0 mt-2"></p>
+            </fieldset>
+            {% for err in form.non_field_errors %}
+            <div class="alert alert-danger py-2 mb-2">{{ err }}</div>
+            {% endfor %}
+        </div>
+        <div class="sky-stage">
+            <div id="aladin-lite-div" class="stage-frame"></div>
+            <div class="stage-actions">
+                <button class="btn btn-primary" type="submit">{% trans "Search" %}</button>
+                <p class="form-text mb-0">{% trans "Click the map to copy RA and Dec, then search." %} {% trans "The first search and each new FITS file can take a while." %}</p>
+            </div>
+        </div>
+    </form>
+
+    {% if searched and form.is_valid %}
+    <section id="results" class="sky-layout" data-scroll="1">
+        <div class="sky-form">
+            <div class="d-flex justify-content-between align-items-baseline mb-2">
+                <h2 class="h6 mb-0">{% trans "Observations" %}</h2>
+                <span class="small text-muted" id="visible-count"></span>
+            </div>
+            <div class="list-group" id="result-list">
+                {% for frame in frames %}
+                <button type="button"
+                        class="list-group-item list-group-item-action"
+                        data-id="{{ frame.id }}"
+                        data-detector="{{ frame.detector|default:'' }}">
+                    <span class="d-block">{{ frame.date }}</span>
+                    <span class="d-block">
+                        {% if frame.detector %}{% blocktrans with number=frame.detector %}Detector {{ number }}{% endblocktrans %}{% else %}{% trans "Detector not identified" %}{% endif %}
+                        {% if frame.wavelength %} · {{ frame.wavelength }}{% endif %}
+                    </span>
+                    <span class="d-block small text-muted">{{ frame.obs_id }}{% if frame.collection %} · {{ frame.collection }}{% endif %}</span>
+                </button>
+                {% empty %}
+                {% if not error %}
+                <p class="text-muted small">{% trans "No results." %}</p>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        <div class="sky-stage">
+            <div id="viewer" class="stage-frame rounded"
+                 {% if query %}
+                 data-ra="{{ query.ra }}"
+                 data-dec="{{ query.dec }}"
+                 data-fov="{{ query.fov|unlocalize }}"
+                 data-unit="{{ query.unit }}"
+                 data-cutout-pattern="{% url 'cutout' 0 %}"
+                 {% endif %}>
+                <p id="viewer-message" class="m-3 text-center">
+                    {% trans "Choose an observation or press play." %}
+                </p>
+                <img id="cutout" class="d-none" alt="{% trans "SPHEREx cutout" %}">
+                <div id="loading" class="d-none position-absolute top-0 start-0 w-100 h-100 align-items-center justify-content-center" style="background: rgba(0,0,0,.45);">
+                    <span>{% trans "Loading FITS…" %}</span>
+                </div>
+            </div>
+            <div class="stage-actions">
+                <label class="form-label mb-0" for="detector">{% trans "Detector" %}</label>
+                <select id="detector" class="form-select form-select-sm" style="width: auto;">
+                    {% for number in "123456" %}
+                    <option value="{{ number }}" {% if detector == number %}selected{% endif %}>{% blocktrans %}Detector {{ number }}{% endblocktrans %}</option>
+                    {% endfor %}
+                </select>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="prev">{% trans "Previous" %}</button>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="play">{% trans "Play" %}</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="next">{% trans "Next" %}</button>
+                <span id="frame-label" class="small text-muted"></span>
+            </div>
+            {% if error %}
+            <div class="alert alert-danger mt-2 mb-0">{{ error }}</div>
+            {% endif %}
+            {% if info %}
+            <div class="alert alert-info mt-2 mb-0">{{ info }}</div>
+            {% endif %}
+        </div>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const messages = JSON.parse(document.getElementById("ui-messages").textContent);
+    const viewer = document.getElementById("viewer");
+    const cutout = document.getElementById("cutout");
+    const loading = document.getElementById("loading");
+    const message = document.getElementById("viewer-message");
+    const frameLabel = document.getElementById("frame-label");
+    const visibleCount = document.getElementById("visible-count");
+    const detectorSelect = document.getElementById("detector");
+    const playButton = document.getElementById("play");
+    const list = document.getElementById("result-list");
+    let cursor = 0;
+    let timer = null;
+    let releaseWait = null;
+    let requestId = 0;
+    let blobUrl = null;
+    let playing = false;
+    const results = document.getElementById("results");
+    if (results?.dataset.scroll === "1") {
+        if ("scrollRestoration" in history) {
+            history.scrollRestoration = "manual";
+        }
+        window.scrollTo(0, 0);
+        setTimeout(() => {
+            const start = window.scrollY;
+            const top = results.getBoundingClientRect().top + start - 12;
+            const distance = top - start;
+            const duration = 1100;
+            const started = performance.now();
+            function step(now) {
+                const t = Math.min(1, (now - started) / duration);
+                const eased = t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2;
+                window.scrollTo(0, start + distance * eased);
+                if (t < 1) {
+                    requestAnimationFrame(step);
+                }
+            }
+            requestAnimationFrame(step);
+        }, 450);
+    }
+    if (viewer) {
+
+    function visibleFrames() {
+        const detector = detectorSelect.value;
+        return [...list.querySelectorAll("[data-id]")].filter((item) => item.dataset.detector === detector);
+    }
+
+    function updateCount() {
+        const frames = visibleFrames();
+        [...list.querySelectorAll("[data-id]")].forEach((item) => {
+            item.classList.toggle("d-none", item.dataset.detector !== detectorSelect.value);
+        });
+        visibleCount.textContent = frames.length
+            ? messages.inDetector.replace("%(count)s", frames.length)
+            : messages.noneInDetector;
+        if (cursor >= frames.length) {
+            cursor = 0;
+        }
+        highlight();
+    }
+
+    function highlight({follow = false} = {}) {
+        const frames = visibleFrames();
+        [...list.querySelectorAll("[data-id]")].forEach((item) => item.classList.remove("active"));
+        const current = frames[cursor];
+        if (!current) {
+            return;
+        }
+        current.classList.add("active");
+        if (follow) {
+            const listRect = list.getBoundingClientRect();
+            const itemRect = current.getBoundingClientRect();
+            list.scrollBy({top: itemRect.top - listRect.top, behavior: "smooth"});
+        }
+    }
+
+    function cutoutUrl(id) {
+        const pattern = viewer.dataset.cutoutPattern.replace("/0/", `/${id}/`);
+        const params = new URLSearchParams({
+            ra: viewer.dataset.ra,
+            dec: viewer.dataset.dec,
+            fov: viewer.dataset.fov,
+            unit: viewer.dataset.unit,
+        });
+        return `${pattern}?${params}`;
+    }
+
+    async function showFrame(index, {follow = false} = {}) {
+        const frames = visibleFrames();
+        if (!viewer.dataset.ra) {
+            message.textContent = messages.searchFirst;
+            message.classList.remove("d-none");
+            return;
+        }
+        if (!frames.length) {
+            stop();
+            message.textContent = messages.noDetector;
+            message.classList.remove("d-none");
+            cutout.classList.add("d-none");
+            frameLabel.textContent = "";
+            return;
+        }
+        cursor = (index + frames.length) % frames.length;
+        highlight({follow});
+        const item = frames[cursor];
+        const myRequest = ++requestId;
+        setLoading(true);
+        frameLabel.textContent = `${cursor + 1} / ${frames.length}`;
+        try {
+            const response = await fetch(cutoutUrl(item.dataset.id));
+            const body = response.ok ? null : await response.text();
+            if (myRequest !== requestId) {
+                return;
+            }
+            if (!response.ok) {
+                message.textContent = body || messages.cutoutFailed;
+                message.classList.remove("d-none");
+                cutout.classList.add("d-none");
+                return;
+            }
+            const blob = await response.blob();
+            if (myRequest !== requestId) {
+                return;
+            }
+            if (blobUrl) {
+                URL.revokeObjectURL(blobUrl);
+            }
+            blobUrl = URL.createObjectURL(blob);
+            cutout.src = blobUrl;
+            cutout.classList.remove("d-none");
+            message.classList.add("d-none");
+        } catch (error) {
+            if (myRequest !== requestId) {
+                return;
+            }
+            message.textContent = messages.cutoutLoadFailed;
+            message.classList.remove("d-none");
+            cutout.classList.add("d-none");
+        } finally {
+            if (myRequest === requestId) {
+                setLoading(false);
+            }
+        }
+    }
+
+    function setLoading(active) {
+        loading.classList.toggle("d-none", !active);
+        loading.classList.toggle("d-flex", active);
+    }
+
+    function stop() {
+        playing = false;
+        if (timer) {
+            clearTimeout(timer);
+            timer = null;
+        }
+        if (releaseWait) {
+            const release = releaseWait;
+            releaseWait = null;
+            release();
+        }
+        playButton.textContent = messages.play;
+    }
+
+    function wait(ms) {
+        return new Promise((resolve) => {
+            releaseWait = resolve;
+            timer = setTimeout(() => {
+                timer = null;
+                releaseWait = null;
+                resolve();
+            }, ms);
+        });
+    }
+
+    async function playLoop() {
+        while (playing) {
+            await showFrame(cursor, {follow: true});
+            if (!playing) {
+                return;
+            }
+            await wait(800);
+            if (!playing) {
+                return;
+            }
+            cursor += 1;
+        }
+    }
+
+    function play() {
+        if (playing) {
+            stop();
+            return;
+        }
+        if (!visibleFrames().length) {
+            showFrame(0);
+            return;
+        }
+        playing = true;
+        playButton.textContent = messages.pause;
+        playLoop();
+    }
+
+    document.getElementById("prev").addEventListener("click", () => {
+        stop();
+        showFrame(cursor - 1, {follow: true});
+    });
+    document.getElementById("next").addEventListener("click", () => {
+        stop();
+        showFrame(cursor + 1, {follow: true});
+    });
+    playButton.addEventListener("click", play);
+    detectorSelect.addEventListener("change", () => {
+        stop();
+        cursor = 0;
+        const url = new URL(window.location.href);
+        url.searchParams.set("detector", detectorSelect.value);
+        history.replaceState({}, "", url);
+        updateCount();
+        frameLabel.textContent = "";
+        cutout.classList.add("d-none");
+        if (!viewer.dataset.ra) {
+            return;
+        }
+        if (visibleFrames().length) {
+            showFrame(0);
+            return;
+        }
+        message.textContent = messages.noDetector;
+        message.classList.remove("d-none");
+    });
+    list.addEventListener("click", (event) => {
+        const item = event.target.closest("[data-id]");
+        if (!item || item.classList.contains("d-none")) {
+            return;
+        }
+        stop();
+        const index = visibleFrames().indexOf(item);
+        if (index >= 0) {
+            showFrame(index);
+        }
+    });
+
+    updateCount();
+    if (viewer.dataset.ra && visibleFrames().length === 0) {
+        const first = [...list.querySelectorAll("[data-detector]")].find((item) => item.dataset.detector);
+        if (first) {
+            detectorSelect.value = first.dataset.detector;
+            updateCount();
+        }
+    }
+    }
+</script>
+<script type="module">
+    import A from "https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js";
+
+    const messages = JSON.parse(document.getElementById("ui-messages").textContent);
+    const map = document.getElementById("aladin-lite-div");
+    const summary = document.getElementById("cutout-summary");
+    const unitToDeg = {arcsec: 1 / 3600, arcmin: 1 / 60, deg: 1};
+    const surveys = {
+        dss2: ["DSS2", "DSS2 color", "https://irsa.ipac.caltech.edu/data/hips/CDS/DSS2/color", 9, "jpeg"],
+        twomass: ["2MASS", "2MASS color", "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/Color", 9, "jpeg"],
+        allwise: ["AllWISE", "AllWISE color", "https://irsa.ipac.caltech.edu/data/hips/CDS/AllWISE/RGB-W4-W2-W1", 8, "jpeg"],
+        sdss: ["SDSS", "SDSS DR9 color", "https://irsa.ipac.caltech.edu/data/hips/CDS/SDSS/DR9/color", 10, "jpeg"],
+    };
+
+    function parseCoordinate(text, isRa) {
+        const value = text.trim();
+        if (/^[+-]?\d+(?:\.\d+)?$/.test(value)) {
+            return Number(value);
+        }
+        const sexagesimal = value.match(/^([+-]?\d+(?:\.\d+)?)(?:h|d|:)\s*(\d+(?:\.\d+)?)[m:]?\s*(\d+(?:\.\d+)?)s?$/i);
+        if (!sexagesimal) {
+            return null;
+        }
+        const sign = sexagesimal[1].startsWith("-") ? -1 : 1;
+        const angle = sign * (Math.abs(Number(sexagesimal[1])) + Number(sexagesimal[2]) / 60 + Number(sexagesimal[3]) / 3600);
+        if (isRa && (/h/i.test(value) || (value.includes(":") && !/d/i.test(value)))) {
+            return angle * 15;
+        }
+        return angle;
+    }
+
+    function skyPosition() {
+        const ra = parseCoordinate(document.getElementById("ra").value, true);
+        const dec = parseCoordinate(document.getElementById("dec").value, false);
+        if (ra == null || dec == null) {
+            return null;
+        }
+        return {ra, dec};
+    }
+
+    function cutoutSideDeg() {
+        const fov = Number(document.getElementById("fov").value);
+        const unit = document.getElementById("unit").value;
+        if (!Number.isFinite(fov) || fov <= 0 || !unitToDeg[unit]) {
+            return null;
+        }
+        return fov * unitToDeg[unit];
+    }
+
+    function updateSummary() {
+        const size = document.getElementById("fov").value;
+        const unit = document.getElementById("unit").selectedOptions[0].textContent;
+        summary.textContent = messages.cutoutSize.replaceAll("%(size)s", `${size} ${unit}`);
+    }
+
+    function showSurvey(aladin, key) {
+        const spec = surveys[key];
+        if (!spec) {
+            return;
+        }
+        const [id, name, url, order, format] = spec;
+        const layer = aladin.createImageSurvey(id, name, url, "equatorial", order, {imgFormat: format});
+        aladin.setBaseImageLayer(layer);
+    }
+
+    try {
+        await A.init;
+        const aladin = A.aladin(map, {
+            fov: Number("{{ map_fov }}"),
+            target: "{{ target_ra }} {{ target_dec }}",
+            cooFrame: "equatorial",
+            showCooGridControl: true,
+            showSimbadPointerControl: true,
+            showCooGrid: true,
+            showFullscreenControl: true,
+        });
+        const cutoutOverlay = A.graphicOverlay({name: "cutout", color: "#00e5ff", lineWidth: 2});
+        aladin.addOverlay(cutoutOverlay);
+
+        function drawCutout({recenter = false, zoom = false} = {}) {
+            const position = skyPosition();
+            const side = cutoutSideDeg();
+            updateSummary();
+            if (!position || side == null) {
+                return;
+            }
+            const halfDec = side / 2;
+            const cosine = Math.cos(position.dec * Math.PI / 180);
+            const halfRa = halfDec / (Math.abs(cosine) < 0.05 ? 0.05 : cosine);
+            cutoutOverlay.removeAll();
+            cutoutOverlay.add(A.polygon([
+                [position.ra - halfRa, position.dec - halfDec],
+                [position.ra + halfRa, position.dec - halfDec],
+                [position.ra + halfRa, position.dec + halfDec],
+                [position.ra - halfRa, position.dec + halfDec],
+            ]));
+            if (zoom) {
+                aladin.setFoV(Math.max(side * 5, 0.05));
+            }
+            if (recenter) {
+                aladin.gotoRaDec(position.ra, position.dec);
+            }
+        }
+
+        showSurvey(aladin, document.getElementById("survey").value);
+        drawCutout();
+        document.getElementById("survey").addEventListener("change", (event) => {
+            showSurvey(aladin, event.target.value);
+        });
+        for (const id of ["ra", "dec"]) {
+            document.getElementById(id).addEventListener("change", () => drawCutout({recenter: true}));
+        }
+        for (const id of ["fov", "unit"]) {
+            document.getElementById(id).addEventListener("input", () => drawCutout({zoom: true}));
+            document.getElementById(id).addEventListener("change", () => drawCutout({zoom: true}));
+        }
+        aladin.on("click", (event) => {
+            const ra = event && (event.ra ?? event.detail?.ra);
+            const dec = event && (event.dec ?? event.detail?.dec);
+            if (ra == null || dec == null || event.isDragging) {
+                return;
+            }
+            document.getElementById("ra").value = Number(ra).toFixed(6);
+            document.getElementById("dec").value = Number(dec).toFixed(6);
+            drawCutout();
+        });
+    } catch (error) {
+        map.textContent = messages.mapFailed;
+    }
+</script>
 {% endblock %}

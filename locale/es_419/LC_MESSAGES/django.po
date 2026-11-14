@@ -1,0 +1,172 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: spherex\n"
+"Language: es_419\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "%(count)s for this detector"
+msgstr "%(count)s en este detector"
+
+msgid "%(size)s × %(size)s"
+msgstr "%(size)s × %(size)s"
+
+msgid "0 for this detector"
+msgstr "0 en este detector"
+
+msgid "Arcminutes"
+msgstr "Minutos de arco"
+
+msgid "Arcseconds"
+msgstr "Segundos de arco"
+
+msgid "Base survey"
+msgstr "Mapa base"
+
+msgid "Check the coordinates and the cutout size."
+msgstr "Revisa las coordenadas y el tamaño del recorte."
+
+msgid "Choose an observation or press play."
+msgstr "Elige una observación o presiona reproducir."
+
+msgid "Click the map to copy RA and Dec, then search."
+msgstr "Haz clic en el mapa para copiar RA y Dec, y luego busca."
+
+msgid "Collection"
+msgstr "Colección"
+
+msgid "Cutout"
+msgstr "Recorte"
+
+msgid "Declination"
+msgstr "Declinación"
+
+msgid "Degrees"
+msgstr "Grados"
+
+msgid "Detector"
+msgstr "Detector"
+
+msgid "Detector %(number)s"
+msgstr "Detector %(number)s"
+
+msgid "Detector not identified"
+msgstr "Detector no identificado"
+
+msgid "IRSA could not be queried. Try again in a few seconds."
+msgstr "No se pudo consultar IRSA. Intenta de nuevo en unos segundos."
+
+msgid "IRSA returned no SPHEREx images for this position in %(collection)s."
+msgstr "IRSA no devolvió imágenes SPHEREx para esta posición en %(collection)s."
+
+msgid "In this version the maximum cutout is 1 degree."
+msgstr "En esta versión el recorte máximo es 1 grado."
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "Loading FITS…"
+msgstr "Cargando FITS…"
+
+msgid "Missing RA and Dec."
+msgstr "Faltan RA y Dec."
+
+msgid "Next"
+msgstr "Siguiente"
+
+msgid "No observations for this detector."
+msgstr "No hay observaciones de este detector."
+
+msgid "No results."
+msgstr "Sin resultados."
+
+msgid "Observations"
+msgstr "Observaciones"
+
+msgid "Only this SPHEREx release is searched. New releases appear in this list."
+msgstr "Solo se busca esta publicación de SPHEREx. Las publicaciones nuevas aparecen en esta lista."
+
+msgid "Pause"
+msgstr "Pausa"
+
+msgid "Play"
+msgstr "Reproducir"
+
+msgid "Previous"
+msgstr "Anterior"
+
+msgid "Quick Release %(number)s (deep survey)"
+msgstr "Quick Release %(number)s (sondeo profundo)"
+
+msgid "Quick Release %(number)s (wide survey)"
+msgstr "Quick Release %(number)s (sondeo amplio)"
+
+msgid "RA and Dec could not be read. Use 08h55m10.831s and -7d14m42.53s, or decimal degrees."
+msgstr "No se pudieron leer RA y Dec. Usa 08h55m10.831s y -7d14m42.53s, o grados decimales."
+
+msgid "RA or Dec is out of range."
+msgstr "RA o Dec está fuera de rango."
+
+msgid "Right ascension"
+msgstr "Ascensión recta"
+
+msgid "Search"
+msgstr "Buscar"
+
+msgid "Search a sky position to play the sequence."
+msgstr "Busca un punto del cielo para reproducir la secuencia."
+
+msgid "Search a sky position to see the sequence."
+msgstr "Busca un punto del cielo para ver la secuencia."
+
+msgid "Showing the %(count)s most recent observations."
+msgstr "Se muestran las %(count)s observaciones más recientes."
+
+msgid "Side"
+msgstr "Lado"
+
+msgid "SPHEREx cutout"
+msgstr "Recorte SPHEREx"
+
+msgid "Square drawn on the map. The number uses the unit next to it. The search covers 1 arcsec around the point. Maximum side is 1 degree."
+msgstr "Cuadrado dibujado en el mapa. El número usa la unidad de al lado. La búsqueda cubre 1 arcsec alrededor del punto. El lado máximo es 1 grado."
+
+msgid "The FITS file could not be downloaded from IRSA."
+msgstr "No se pudo descargar el archivo FITS desde IRSA."
+
+msgid "The FITS file has no IMAGE extension."
+msgstr "El archivo FITS no tiene la extensión IMAGE."
+
+msgid "The IMAGE extension is empty."
+msgstr "La extensión IMAGE está vacía."
+
+msgid "The cutout could not be generated."
+msgstr "No se pudo generar el recorte."
+
+msgid "The cutout could not be loaded."
+msgstr "No se pudo cargar el recorte."
+
+msgid "The cutout size is not a number."
+msgstr "El tamaño del recorte no es un número."
+
+msgid "The cutout size must be greater than zero."
+msgstr "El tamaño del recorte debe ser mayor que cero."
+
+msgid "The cutout was empty."
+msgstr "El recorte llegó vacío."
+
+msgid "The first search and each new FITS file can take a while."
+msgstr "La primera búsqueda y cada archivo FITS nuevo pueden tardar."
+
+msgid "The map could not start. You can still type coordinates."
+msgstr "El mapa no pudo iniciarse. Igual puedes escribir las coordenadas."
+
+msgid "This observation does not cover the requested position."
+msgstr "Esta observación no cubre la posición pedida."
+
+msgid "Unit"
+msgstr "Unidad"
+
+msgid "Unknown size unit."
+msgstr "Unidad de tamaño desconocida."

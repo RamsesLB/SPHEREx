@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 from pathlib import Path
 import os 
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 from django.utils.translation import gettext_lazy as _
 import dj_database_url
 
@@ -47,7 +48,16 @@ AWS_S3_SIGNATURE_VERSION = 's3v4'
 
 ALLOWED_HOSTS = [
     "spherex.adsumy.com",
-    "127.0.0.1"]
+    "127.0.0.1",
+    "localhost",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://spherex.adsumy.com",
+]
+
+# Render terminates TLS; the language form is a POST and needs the original scheme.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 
 # Application definition
@@ -67,6 +77,7 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware', # Added for static files
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.locale.LocaleMiddleware', # Added for languaje support
+    'config.middleware.DefaultEnglishMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -84,6 +95,7 @@ TEMPLATES = [
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.request',
+                'django.template.context_processors.i18n',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
             ],
@@ -172,6 +184,14 @@ STORAGES = {
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# off: download each FITS, cut out, and keep only the PNG.
+# r2: store the IMAGE extension on Cloudflare R2 and cut later frames from that file.
+FITS_IMAGE_CACHE = os.environ.get("FITS_IMAGE_CACHE", "off").strip().lower()
+if FITS_IMAGE_CACHE not in {"off", "r2"}:
+    raise ImproperlyConfigured(
+        "FITS_IMAGE_CACHE must be 'off' or 'r2'."
+    )
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
