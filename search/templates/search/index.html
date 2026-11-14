@@ -85,6 +85,21 @@
     }
     #result-list { max-height: calc(var(--stage-h) - 1.75rem); overflow: auto; }
     #cutout-box legend { font-size: 1rem; padding: 0 0.4rem; }
+    .search-trail {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem 1.25rem;
+        list-style: none;
+        padding: 0;
+        margin: 0 0 0.85rem;
+        font-size: 0.85rem;
+    }
+    .search-trail li { display: flex; gap: 0.4rem; align-items: baseline; }
+    .search-trail .trail-label { font-weight: 600; }
+    .search-trail li[data-state="pending"],
+    .search-trail li[data-state="empty"] { color: #6c757d; }
+    .search-trail li[data-state="ready"] { color: #146c43; }
+    .search-trail li[data-state="failed"] { color: #b02a37; }
     .zone-actions {
         display: flex;
         flex-wrap: wrap;
@@ -217,7 +232,21 @@
     </form>
 
     {% if searched and form.is_valid %}
-    <section id="results" class="sky-layout" data-scroll="1">
+    <section id="results" data-scroll="1">
+        {% if trail %}
+        <ol id="search-trail" class="search-trail"
+            {% if refresh_url %}data-refresh="{{ refresh_url }}" data-unavailable="{% trans "IRSA did not respond" %}"{% endif %}>
+            <li data-step="local" data-state="{{ trail.local_state }}">
+                <span class="trail-label">{% trans "Local database" %}</span>
+                <span class="trail-text">{{ trail.local_text }}</span>
+            </li>
+            <li data-step="irsa" data-state="{{ trail.irsa_state }}">
+                <span class="trail-label">IRSA</span>
+                <span class="trail-text">{{ trail.irsa_text }}</span>
+            </li>
+        </ol>
+        {% endif %}
+        <div class="sky-layout">
         <div class="sky-form">
             <div class="d-flex justify-content-between align-items-baseline mb-2">
                 <h2 class="h6 mb-0">{% trans "Observations" %}</h2>
@@ -231,7 +260,7 @@
                         data-detector="{{ frame.detector|default:'' }}">
                     <span class="d-block">{{ frame.date }}</span>
                     <span class="d-block">
-                        {% if frame.detector %}{% blocktrans with number=frame.detector %}Detector {{ number }}{% endblocktrans %}{% else %}{% trans "Detector not identified" %}{% endif %}
+                        {{ frame.detector_label }}
                         {% if frame.wavelength %} · {{ frame.wavelength }}{% endif %}
                     </span>
                     <span class="d-block small text-muted">{{ frame.obs_id }}{% if frame.collection %} · {{ frame.collection }}{% endif %}</span>
@@ -278,9 +307,8 @@
             {% if error %}
             <div class="alert alert-danger mt-2 mb-0">{{ error }}</div>
             {% endif %}
-            {% if info %}
-            <div class="alert alert-info mt-2 mb-0">{{ info }}</div>
-            {% endif %}
+            <div id="search-info" class="alert alert-info mt-2 mb-0{% if not info %} d-none{% endif %}">{{ info }}</div>
+        </div>
         </div>
     </section>
     <div class="modal fade" id="empty-detector-modal" tabindex="-1" aria-labelledby="empty-detector-title" aria-hidden="true">
@@ -719,7 +747,91 @@
         if (!modalElement || !viewer.dataset.ra || visibleFrames().length) {
             return;
         }
+        if (document.querySelector("#results .alert-danger")) {
+            return;
+        }
         bootstrap.Modal.getOrCreateInstance(modalElement).show();
+    }
+
+    function replaceFrames(frames) {
+        stop();
+        cursor = 0;
+        list.replaceChildren();
+        frames.forEach((frame) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "list-group-item list-group-item-action";
+            button.dataset.id = frame.id;
+            button.dataset.detector = frame.detector ?? "";
+            const date = document.createElement("span");
+            date.className = "d-block";
+            date.textContent = frame.date;
+            const detail = document.createElement("span");
+            detail.className = "d-block";
+            detail.textContent = frame.wavelength
+                ? `${frame.detector_label} · ${frame.wavelength}`
+                : frame.detector_label;
+            const meta = document.createElement("span");
+            meta.className = "d-block small text-muted";
+            meta.textContent = frame.collection ? `${frame.obs_id} · ${frame.collection}` : frame.obs_id;
+            button.append(date, detail, meta);
+            list.append(button);
+        });
+        if (!frames.length) {
+            const empty = document.createElement("p");
+            empty.className = "text-muted small";
+            empty.textContent = messages.noResults;
+            list.append(empty);
+        }
+        frameLabel.textContent = "";
+        cutout.classList.add("d-none");
+        message.classList.remove("d-none");
+        message.textContent = messages.chooseObservation;
+        updateCount();
+        if (!visibleFrames().length) {
+            warnIfEmpty();
+        }
+    }
+
+    function showSearchInfo(text) {
+        const info = document.getElementById("search-info");
+        if (!info) {
+            return;
+        }
+        info.textContent = text || "";
+        info.classList.toggle("d-none", !text);
+    }
+
+    const trail = document.getElementById("search-trail");
+    if (trail?.dataset.refresh) {
+        const step = trail.querySelector("[data-step='irsa']");
+        fetch(trail.dataset.refresh)
+            .then((response) => response.json())
+            .then((body) => {
+                if (step) {
+                    step.dataset.state = body.irsa_state || "failed";
+                    const label = step.querySelector(".trail-text");
+                    if (label) {
+                        label.textContent = body.irsa_text || trail.dataset.unavailable;
+                    }
+                }
+                if (body.status === "updated" || body.status === "empty") {
+                    replaceFrames(body.frames || []);
+                }
+                if ("info" in body) {
+                    showSearchInfo(body.info);
+                }
+            })
+            .catch(() => {
+                if (!step) {
+                    return;
+                }
+                step.dataset.state = "failed";
+                const label = step.querySelector(".trail-text");
+                if (label) {
+                    label.textContent = trail.dataset.unavailable;
+                }
+            });
     }
 
     updateCount();

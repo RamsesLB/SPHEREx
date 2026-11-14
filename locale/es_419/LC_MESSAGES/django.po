@@ -239,3 +239,37 @@ msgstr "Escribe un nombre."
 
 msgid "The object list is full."
 msgstr "La lista de objetos está llena."
+
+msgid "Local database"
+msgstr "Base local"
+
+msgid "Nothing saved for this point"
+msgstr "Nada guardado para este punto"
+
+msgid "Checking IRSA…"
+msgstr "Consultando IRSA…"
+
+msgid "IRSA did not respond"
+msgstr "IRSA no respondió"
+
+msgid "IRSA did not respond and there is no cache"
+msgstr "IRSA no respondió y no hay caché"
+
+msgid "No images in this collection"
+msgstr "Sin imágenes en esta colección"
+
+msgid "No new observations"
+msgstr "Sin observaciones nuevas"
+
+msgid "Showing saved observations. A cutout still needs the FITS file."
+msgstr "Mostrando observaciones guardadas. El recorte todavía necesita el archivo FITS."
+
+msgid "%(count)s saved observation"
+msgid_plural "%(count)s saved observations"
+msgstr[0] "%(count)s observación guardada"
+msgstr[1] "%(count)s observaciones guardadas"
+
+msgid "%(count)s new observation"
+msgid_plural "%(count)s new observations"
+msgstr[0] "%(count)s observación nueva"
+msgstr[1] "%(count)s observaciones nuevas"

@@ -1,9 +1,12 @@
 import logging
+from urllib.parse import urlencode
 
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext as _
+from django.utils.translation import ngettext
 
 from .forms import CoordinateForm
 from .models import SpherexImage
@@ -20,30 +23,12 @@ def index(request):
     info = None
     searched = False
 
+    trail = None
+    refresh_url = ""
     if has_query:
         searched = True
         if form.is_valid():
-            try:
-                images = services.search_and_store(
-                    form.cleaned_data["ra"],
-                    form.cleaned_data["dec"],
-                    collection=form.cleaned_data["collection"],
-                )
-            except services.SearchError as exc:
-                error = str(exc)
-            except Exception:
-                logger.exception("Unexpected IRSA search error")
-                error = _("IRSA could not be queried. Try again in a few seconds.")
-            else:
-                frames = [_frame_payload(image) for image in images]
-                if not frames:
-                    info = _("IRSA returned no SPHEREx images for this position in %(collection)s.") % {
-                        "collection": form.cleaned_data["collection"],
-                    }
-                elif len(frames) >= services.MAX_RESULTS:
-                    info = _("Showing the %(count)s most recent observations.") % {
-                        "count": services.MAX_RESULTS,
-                    }
+            frames, error, info, trail, refresh_url = _search_page(form)
         else:
             error = _("Check the coordinates and the cutout size.")
 
@@ -55,12 +40,57 @@ def index(request):
         "frames": frames,
         "error": error,
         "info": info,
+        "trail": trail,
+        "refresh_url": refresh_url,
         "searched": searched,
         "target_ra": target_ra,
         "target_dec": target_dec,
         "map_fov": _map_fov(form),
         "query": query,
         "messages_json": _js_messages(),
+    })
+
+
+def refresh(request):
+    form = CoordinateForm(request.GET)
+    if not form.is_valid():
+        return JsonResponse({"status": "invalid"}, status=400)
+    data = form.cleaned_data
+    try:
+        coord = services.parse_coordinates(data["ra"], data["dec"])
+        had_local = bool(services.local_images_covering(coord, data["collection"]))
+    except services.SearchError:
+        had_local = False
+    try:
+        images, new_count = services.search_and_store(data["ra"], data["dec"], collection=data["collection"])
+    except services.SearchError:
+        state, text = _irsa_trail("unavailable" if had_local else "unavailable_empty", 0)
+        payload = {"status": "unavailable", "irsa_state": state, "irsa_text": text}
+        if had_local:
+            payload["info"] = _("Showing saved observations. A cutout still needs the FITS file.")
+        return JsonResponse(payload)
+    except Exception:
+        logger.exception("Unexpected IRSA refresh error")
+        state, text = _irsa_trail("unavailable" if had_local else "unavailable_empty", 0)
+        return JsonResponse({"status": "unavailable", "irsa_state": state, "irsa_text": text})
+    if not images:
+        return JsonResponse({
+            "status": "empty",
+            "frames": [],
+            "irsa_state": "empty",
+            "irsa_text": _irsa_trail("empty", 0)[1],
+            "info": _("IRSA returned no SPHEREx images for this position in %(collection)s.") % {
+                "collection": data["collection"],
+            },
+        })
+    state, text = _irsa_trail("ready", new_count)
+    return JsonResponse({
+        "status": "updated",
+        "frames": [_frame_payload(image) for image in images],
+        "new_count": new_count,
+        "irsa_state": state,
+        "irsa_text": text,
+        "info": _result_info(images, new_count),
     })
 
 
@@ -101,6 +131,105 @@ def health_check(request):
     return JsonResponse({"status": "ok", "app": "SPHEREx NASA Hackaton live"})
 
 
+def _search_page(form):
+    data = form.cleaned_data
+    try:
+        coord = services.parse_coordinates(data["ra"], data["dec"])
+        local = services.local_images_covering(coord, data["collection"])
+    except services.SearchError as exc:
+        local_state, local_text = _local_trail(0)
+        irsa_state, irsa_text = _irsa_trail("unavailable_empty", 0)
+        return [], str(exc), None, _trail(local_state, local_text, irsa_state, irsa_text), ""
+    if local:
+        frames = [_frame_payload(image) for image in local]
+        local_state, local_text = _local_trail(len(frames))
+        irsa_state, irsa_text = _irsa_trail("pending", 0)
+        return frames, None, _result_info(local, 0), _trail(local_state, local_text, irsa_state, irsa_text), _refresh_url(data)
+    try:
+        images, new_count = services.search_and_store(data["ra"], data["dec"], collection=data["collection"])
+    except services.SearchError as exc:
+        local_state, local_text = _local_trail(0)
+        irsa_state, irsa_text = _irsa_trail("unavailable_empty", 0)
+        return [], str(exc), None, _trail(local_state, local_text, irsa_state, irsa_text), ""
+    except Exception:
+        logger.exception("Unexpected IRSA search error")
+        local_state, local_text = _local_trail(0)
+        irsa_state, irsa_text = _irsa_trail("unavailable_empty", 0)
+        return [], _("IRSA could not be queried. Try again in a few seconds."), None, _trail(local_state, local_text, irsa_state, irsa_text), ""
+    frames = [_frame_payload(image) for image in images]
+    local_state, local_text = _local_trail(0)
+    if not frames:
+        irsa_state, irsa_text = _irsa_trail("empty", 0)
+        info = _("IRSA returned no SPHEREx images for this position in %(collection)s.") % {
+            "collection": data["collection"],
+        }
+    else:
+        irsa_state, irsa_text = _irsa_trail("ready", new_count)
+        info = _result_info(images, new_count)
+    return frames, None, info, _trail(local_state, local_text, irsa_state, irsa_text), ""
+
+
+def _refresh_url(data):
+    query = urlencode({
+        "ra": data["ra"],
+        "dec": data["dec"],
+        "fov": data["fov"],
+        "unit": data["unit"],
+        "collection": data["collection"],
+        "detector": data["detector"],
+    })
+    return f"{reverse('refresh')}?{query}"
+
+
+def _trail(local_state, local_text, irsa_state, irsa_text):
+    return {
+        "local_state": local_state,
+        "local_text": local_text,
+        "irsa_state": irsa_state,
+        "irsa_text": irsa_text,
+    }
+
+
+def _local_trail(count):
+    if count:
+        return "ready", ngettext(
+            "%(count)s saved observation",
+            "%(count)s saved observations",
+            count,
+        ) % {"count": count}
+    return "empty", _("Nothing saved for this point")
+
+
+def _irsa_trail(status, new_count):
+    if status == "pending":
+        return "pending", _("Checking IRSA…")
+    if status == "unavailable":
+        return "failed", _("IRSA did not respond")
+    if status == "unavailable_empty":
+        return "failed", _("IRSA did not respond and there is no cache")
+    if status == "empty":
+        return "empty", _("No images in this collection")
+    if new_count:
+        return "ready", ngettext(
+            "%(count)s new observation",
+            "%(count)s new observations",
+            new_count,
+        ) % {"count": new_count}
+    return "ready", _("No new observations")
+
+
+def _result_info(images, new_count):
+    if new_count:
+        return ngettext(
+            "%(count)s new observation",
+            "%(count)s new observations",
+            new_count,
+        ) % {"count": new_count}
+    if len(images) >= services.MAX_RESULTS:
+        return _("Showing the %(count)s most recent observations.") % {"count": services.MAX_RESULTS}
+    return ""
+
+
 def _frame_payload(image):
     return {
         "id": image.pk,
@@ -109,6 +238,11 @@ def _frame_payload(image):
         "date": timezone.localtime(image.observation_date).strftime("%Y-%m-%d %H:%M UTC"),
         "wavelength": services.wavelength_label(image.em_min, image.em_max),
         "collection": image.collection,
+        "detector_label": (
+            _("Detector %(number)s") % {"number": image.detector}
+            if image.detector
+            else _("Detector not identified")
+        ),
     }
 
 
@@ -158,4 +292,6 @@ def _js_messages():
         "cutoutSize": _("%(size)s × %(size)s"),
         "measuring": _("Timing the first image…"),
         "progress": _("%(done)s / %(total)s · %(eta)s left"),
+        "noResults": _("No results."),
+        "chooseObservation": _("Choose an observation or press play."),
     }

@@ -20,6 +20,7 @@ from astroquery.ipac.irsa import Irsa
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from django.db.models import F, Q
 from django.utils import timezone
 from django.utils.translation import gettext as _
 from PIL import Image
@@ -39,6 +40,8 @@ FALLBACK_COLLECTIONS = (
 )
 SEARCH_RADIUS = 1 * u.arcsec
 MAX_RESULTS = 80
+FOOTPRINT_HALF_DEG = 2.0
+MAX_REGION_RADIUS_DEG = 10.0
 _COLLECTION_CACHE = {"expires": 0.0, "names": []}
 # Wikipedia and Aladin often paste a minus that is not the ASCII hyphen.
 _ANGLE_DASHES = str.maketrans({
@@ -116,7 +119,35 @@ def wavelength_label(em_min, em_max):
     return f"{lo:.2f}–{hi:.2f} µm"
 
 
+def footprint_bbox(region, ra, dec):
+    parsed = _bbox_from_region(region)
+    if parsed:
+        return parsed
+    if ra is None or dec is None:
+        return None
+    return _bbox_around(ra, dec, FOOTPRINT_HALF_DEG)
+
+
+def local_images_covering(coord, collection):
+    ra = float(coord.ra.deg) % 360.0
+    dec = float(coord.dec.deg)
+    inside = Q(ra_min__lte=F("ra_max")) & Q(ra_min__lte=ra) & Q(ra_max__gte=ra)
+    wrapped = Q(ra_min__gt=F("ra_max")) & (Q(ra_min__lte=ra) | Q(ra_max__gte=ra))
+    found = (
+        SpherexImage.objects.filter(
+            collection=collection,
+            ra_min__isnull=False,
+            dec_min__lte=dec,
+            dec_max__gte=dec,
+        )
+        .filter(inside | wrapped)
+        .order_by("-observation_date", "-obs_id")[:MAX_RESULTS]
+    )
+    return list(reversed(found))
+
+
 def search_and_store(ra, dec, collection=None):
+    """Query IRSA and store the rows. Returns (images, new_url_count)."""
     coord = parse_coordinates(ra, dec)
     if collection:
         candidates = [collection]
@@ -139,9 +170,10 @@ def search_and_store(ra, dec, collection=None):
     if results is None:
         if errors:
             raise SearchError(_("IRSA could not be queried. Try again in a few seconds."))
-        return []
+        return [], 0
 
     saved = []
+    new_count = 0
     for row in _most_recent(results, MAX_RESULTS):
         url = _text(_cell(row, "access_url"), limit=1000)
         if not url:
@@ -149,17 +181,24 @@ def search_and_store(ra, dec, collection=None):
         em_min = _optional_float(_cell(row, "em_min"))
         em_max = _optional_float(_cell(row, "em_max"))
         observed = _mjd_to_datetime(_cell(row, "t_min")) or timezone.now()
+        ra_center = _optional_float(_cell(row, "s_ra")) or float(coord.ra.deg)
+        dec_center = _optional_float(_cell(row, "s_dec")) or float(coord.dec.deg)
+        box = footprint_bbox(_cell(row, "s_region"), ra_center, dec_center)
         defaults = {
             "obs_id": _text(_cell(row, "obs_id"), limit=255) or "unknown",
-            "ra_center": _optional_float(_cell(row, "s_ra")) or float(coord.ra.deg),
-            "dec_center": _optional_float(_cell(row, "s_dec")) or float(coord.dec.deg),
+            "ra_center": ra_center,
+            "dec_center": dec_center,
             "observation_date": observed,
             "em_min": em_min,
             "em_max": em_max,
             "collection": collection_name[:64],
             "band": _text(_cell(row, "energy_bandpassname"), limit=80),
         }
-        image, _created = SpherexImage.objects.update_or_create(access_url=url, defaults=defaults)
+        if box:
+            defaults["ra_min"], defaults["ra_max"], defaults["dec_min"], defaults["dec_max"] = box
+        image, created = SpherexImage.objects.update_or_create(access_url=url, defaults=defaults)
+        if created:
+            new_count += 1
         guessed = detector_from_wavelength(em_min, em_max)
         if image.detector is None and guessed is not None:
             image.detector = guessed
@@ -167,7 +206,52 @@ def search_and_store(ra, dec, collection=None):
         saved.append(image)
 
     saved.sort(key=lambda image: (image.observation_date, image.obs_id))
-    return saved
+    return saved, new_count
+
+
+def _bbox_from_region(region):
+    text = _text(region, limit=8000)
+    if not text:
+        return None
+    numbers = [float(item) for item in re.findall(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", text)]
+    if "CIRCLE" in text.upper() and len(numbers) >= 3:
+        return _bbox_around(numbers[0], numbers[1], min(abs(numbers[2]), MAX_REGION_RADIUS_DEG))
+    if len(numbers) < 4:
+        return None
+    if len(numbers) % 2:
+        numbers = numbers[:-1]
+    ras = numbers[0::2]
+    decs = numbers[1::2]
+    if any(not np.isfinite(value) or abs(value) > 1000 for value in ras + decs):
+        return None
+    if any(abs(value) > 90 for value in decs):
+        return None
+    ra_min, ra_max = _ra_span(ras)
+    return ra_min, ra_max, max(-90.0, min(decs)), min(90.0, max(decs))
+
+
+def _bbox_around(ra, dec, half):
+    ra = float(ra) % 360.0
+    dec = float(dec)
+    half = abs(float(half))
+    return (
+        (ra - half) % 360.0,
+        (ra + half) % 360.0,
+        max(-90.0, dec - half),
+        min(90.0, dec + half),
+    )
+
+
+def _ra_span(values):
+    angles = sorted({float(value) % 360.0 for value in values})
+    if len(angles) == 1:
+        return angles[0], angles[0]
+    gaps = [(angles[index + 1] - angles[index], index) for index in range(len(angles) - 1)]
+    gaps.append((angles[0] + 360.0 - angles[-1], len(angles) - 1))
+    _gap, index = max(gaps, key=lambda item: item[0])
+    start = angles[(index + 1) % len(angles)]
+    end = angles[index]
+    return start, end
 
 
 def cached_cutout(image, ra, dec, fov_arcsec):

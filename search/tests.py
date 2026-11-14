@@ -1,3 +1,4 @@
+import json
 import tempfile
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -5,11 +6,14 @@ from unittest.mock import patch
 import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
+from astropy.table import Table
 from astropy.wcs import WCS
 from django.core.files.storage import FileSystemStorage
-from django.test import SimpleTestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
 
-from search import services
+from search import services, views
+from search.models import SpherexImage
 
 
 def _sky_header():
@@ -152,3 +156,128 @@ class CutoutOrientationTests(SimpleTestCase):
         row, column = np.unravel_index(np.nanargmax(oriented), oriented.shape)
         self.assertLess(row, 2.5)
         self.assertLess(column, 2.5)
+
+
+class FootprintTests(SimpleTestCase):
+    def test_polygon_crossing_zero_keeps_the_wrap(self):
+        ra_min, ra_max, dec_min, dec_max = services.footprint_bbox(
+            "POLYGON ICRS 350 -2 10 -2 10 2 350 2",
+            1,
+            0,
+        )
+        self.assertGreater(ra_min, ra_max)
+        self.assertAlmostEqual(dec_min, -2)
+        self.assertAlmostEqual(dec_max, 2)
+
+    def test_circle_uses_the_radius(self):
+        ra_min, ra_max, dec_min, dec_max = services.footprint_bbox("CIRCLE ICRS 10 0 1", None, None)
+        self.assertAlmostEqual(ra_min, 9)
+        self.assertAlmostEqual(ra_max, 11)
+        self.assertAlmostEqual(dec_min, -1)
+        self.assertAlmostEqual(dec_max, 1)
+
+    def test_missing_region_uses_a_two_degree_half_width(self):
+        ra_min, ra_max, _dec_min, _dec_max = services.footprint_bbox("", 10, 0)
+        self.assertAlmostEqual(ra_min, 8)
+        self.assertAlmostEqual(ra_max, 12)
+
+    def test_missing_region_near_zero_hours_wraps(self):
+        ra_min, ra_max, _dec_min, _dec_max = services.footprint_bbox("", 1, 0)
+        self.assertAlmostEqual(ra_min, 359)
+        self.assertAlmostEqual(ra_max, 3)
+
+
+def _image(**kwargs):
+    values = {
+        "obs_id": "obs",
+        "access_url": "https://example.test/obs.fits",
+        "ra_center": 10,
+        "dec_center": 0,
+        "ra_min": 8,
+        "ra_max": 12,
+        "dec_min": -2,
+        "dec_max": 2,
+        "observation_date": timezone.now(),
+        "collection": "spherex_dr1",
+    }
+    values.update(kwargs)
+    return SpherexImage.objects.create(**values)
+
+
+class LocalCoverageTests(TestCase):
+    def test_point_inside_the_box_is_returned(self):
+        image = _image()
+        _image(access_url="https://example.test/other.fits", ra_min=20, ra_max=24, ra_center=22, dec_center=0)
+        coord = SkyCoord(10, 0, unit="deg")
+        found = services.local_images_covering(coord, "spherex_dr1")
+        self.assertEqual([item.pk for item in found], [image.pk])
+
+    def test_wrap_around_zero_hours(self):
+        image = _image(
+            access_url="https://example.test/wrap.fits",
+            ra_center=1,
+            ra_min=350,
+            ra_max=10,
+            dec_center=-56,
+            dec_min=-58,
+            dec_max=-54,
+        )
+        inside = services.local_images_covering(SkyCoord(1, -56, unit="deg"), "spherex_dr1")
+        outside = services.local_images_covering(SkyCoord(100, -56, unit="deg"), "spherex_dr1")
+        self.assertEqual([item.pk for item in inside], [image.pk])
+        self.assertEqual(outside, [])
+
+
+class SearchStoreTests(TestCase):
+    def _table(self):
+        return Table({
+            "access_url": ["https://example.test/new.fits"],
+            "obs_id": ["obs-1"],
+            "s_ra": [10.0],
+            "s_dec": [0.0],
+            "s_region": ["POLYGON ICRS 8 -2 12 -2 12 2 8 2"],
+            "t_min": [60000.0],
+            "em_min": [1.1e-6],
+            "em_max": [1.6e-6],
+            "energy_bandpassname": ["SPHEREx-D2"],
+        })
+
+    @patch("search.services.Irsa.query_sia")
+    def test_stores_the_footprint_and_counts_only_new_urls(self, query):
+        query.return_value = self._table()
+        images, new_count = services.search_and_store("10", "0", collection="spherex_dr1")
+        self.assertEqual(new_count, 1)
+        self.assertAlmostEqual(images[0].ra_min, 8)
+        self.assertAlmostEqual(images[0].ra_max, 12)
+        _images, again = services.search_and_store("10", "0", collection="spherex_dr1")
+        self.assertEqual(again, 0)
+
+    @patch("search.services.Irsa.query_sia", side_effect=RuntimeError("502"))
+    def test_irsa_failure_raises(self, _query):
+        with self.assertRaises(services.SearchError):
+            services.search_and_store("10", "0", collection="spherex_dr1")
+
+
+class RefreshViewTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def _request(self):
+        return self.factory.get("/refresh/", {
+            "ra": "10",
+            "dec": "0",
+            "fov": "60",
+            "unit": "arcsec",
+            "collection": "spherex_dr1",
+            "detector": "2",
+        })
+
+    @patch("search.services.list_spherex_collections", return_value=["spherex_dr1"])
+    @patch("search.services.search_and_store", side_effect=services.SearchError("down"))
+    @patch("search.services.local_images_covering", return_value=[])
+    def test_unavailable_without_cache(self, _local, _store, _collections):
+        response = views.refresh(self._request())
+        body = json.loads(response.content)
+        self.assertEqual(body["status"], "unavailable")
+        self.assertEqual(body["irsa_state"], "failed")
+        self.assertNotIn("frames", body)

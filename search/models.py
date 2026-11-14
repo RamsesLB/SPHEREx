@@ -16,7 +16,7 @@ class SpherexImage(models.Model):
     ra_center = models.FloatField()
     dec_center = models.FloatField()
 
-    # Reservado para acotar búsquedas sin PostGIS. Esta versión no lo rellena.
+    # Bounding box of the frame. ra_min > ra_max means the box crosses 0°/360°.
     ra_min = models.FloatField(null=True, blank=True)
     ra_max = models.FloatField(null=True, blank=True)
     dec_min = models.FloatField(null=True, blank=True)
@@ -31,6 +31,9 @@ class SpherexImage(models.Model):
 
     class Meta:
         ordering = ["observation_date", "obs_id"]
+        indexes = [
+            models.Index(fields=["collection", "dec_min", "dec_max"], name="spherex_cover_idx"),
+        ]
 
     def __str__(self):
         detector = f" D{self.detector}" if self.detector else ""
