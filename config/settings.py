@@ -185,8 +185,8 @@ STORAGES = {
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# image: persist each PNG cutout on Cloudflare R2 under media/cutouts/.
-# fits: persist the IMAGE extension on R2 under fits-cache/ and cut from that file.
+# Both modes persist each PNG cutout on Cloudflare R2 under media/cutouts/.
+# fits also persists the IMAGE extension on R2 under fits-cache/ and cuts from that file.
 IMAGE_MODE = os.environ.get("IMAGE_MODE", "image").strip().lower()
 if IMAGE_MODE not in {"image", "fits"}:
     raise ImproperlyConfigured(

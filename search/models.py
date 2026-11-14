@@ -9,6 +9,17 @@ class ImageTest(models.Model):
     img = models.ImageField(upload_to='testing/', null=True, blank=True)
 
 
+class SpherexCollection(models.Model):
+    name = models.CharField(max_length=64, unique=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class SpherexImage(models.Model):
     obs_id = models.CharField(max_length=255)
     access_url = models.URLField(max_length=1000, unique=True)

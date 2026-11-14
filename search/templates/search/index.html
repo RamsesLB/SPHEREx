@@ -6,7 +6,16 @@
 {% block extra_head %}
 <style>
     .site-nav { background: #000; }
-    .site-nav .navbar-brand { color: #fff; font-weight: 600; }
+    .site-nav .navbar-brand {
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .site-nav .navbar-brand:hover,
+    .site-nav .navbar-brand:focus {
+        color: #fff;
+    }
     .lang-globe { width: 1rem; height: 1rem; fill: currentColor; }
     .sky-layout {
         --stage-h: min(calc(100vh - 13.5rem), 780px);
@@ -118,6 +127,10 @@
         line-height: 1.3;
     }
     .step-box .btn-search {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
         width: 100%;
         margin-top: 0.35rem;
     }
@@ -127,7 +140,7 @@
 {% block body %}
 {{ messages_json|json_script:"ui-messages" }}
 <nav class="navbar navbar-dark site-nav px-3">
-    <span class="navbar-brand mb-0">SPHEREx</span>
+    <a class="navbar-brand mb-0" id="site-home" href="{% url 'index' %}">SPHEREx</a>
     <div class="dropdown">
         <button class="btn btn-outline-light btn-sm dropdown-toggle d-inline-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
             <svg class="lang-globe" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path d="M352 256c0 22.2-1.2 43.6-3.3 64H163.3c-2.2-20.4-3.3-41.8-3.3-64s1.2-43.6 3.3-64H348.7c2.2 20.4 3.3 41.8 3.3 64zm28.8-64H465c11.5 20.2 18.4 43.3 19.8 68-1.4 24.7-8.3 47.8-19.8 68H380.8c2.1-21.5 3.2-43.6 3.2-64s-1.1-42.5-3.2-64zM131.2 256c0 20.4 1.1 42.5 3.2 64H47c-11.5-20.2-18.4-43.3-19.8-68 1.4-24.7 8.3-47.8 19.8-68h87.4c-2.1 21.5-3.2 43.6-3.2 64zm20.8-96h207.8c-6.1-32.5-18.5-61.4-35.4-85.2C307.5 50.2 283.4 32 256 32s-51.5 18.2-68.4 42.8C170.5 98.6 158.1 127.5 152 160zm207.8 192H152c6.1 32.5 18.5 61.4 35.4 85.2C204.5 461.8 228.6 480 256 480s51.5-18.2 68.4-42c16.9-23.8 29.3-52.7 35.4-85.2zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256z"/></svg>
@@ -220,7 +233,10 @@
                 {% for err in form.non_field_errors %}
                 <div class="alert alert-danger py-2 mb-2">{{ err }}</div>
                 {% endfor %}
-                <button class="btn btn-primary btn-search" type="submit">{% trans "Search" %}</button>
+                <button class="btn btn-primary btn-search" type="submit" data-loading-label="{% trans "Searching…" %}">
+                    <span class="spinner-border spinner-border-sm d-none" aria-hidden="true"></span>
+                    <span class="search-label">{% trans "Search" %}</span>
+                </button>
             </div>
         </div>
         <div class="sky-stage">
@@ -404,6 +420,20 @@
 
 {% block scripts %}
 <script>
+    const homeLink = document.getElementById("site-home");
+    if (homeLink) {
+        homeLink.addEventListener("click", (event) => {
+            event.preventDefault();
+            const target = new URL(homeLink.getAttribute("href"), window.location.origin);
+            const here = new URL(window.location.href);
+            const alreadyClean = here.pathname === target.pathname && !here.search && !here.hash;
+            if (alreadyClean) {
+                window.location.reload();
+                return;
+            }
+            window.location.assign(target.pathname);
+        });
+    }
     const messages = JSON.parse(document.getElementById("ui-messages").textContent);
     const viewer = document.getElementById("viewer");
     const cutout = document.getElementById("cutout");
@@ -423,8 +453,39 @@
     let frameMs = null;
     let countdownTimer = null;
     let countdownAnchor = null;
+    const searchForm = document.querySelector("form.sky-layout");
+    const searchButton = searchForm?.querySelector(".btn-search");
+    function setSearchBusy(busy) {
+        if (!searchButton) {
+            return;
+        }
+        const label = searchButton.querySelector(".search-label");
+        const spinner = searchButton.querySelector(".spinner-border");
+        searchButton.disabled = busy;
+        searchButton.setAttribute("aria-busy", busy ? "true" : "false");
+        if (label) {
+            label.textContent = busy
+                ? (searchButton.dataset.loadingLabel || label.textContent)
+                : (label.dataset.label || label.textContent);
+        }
+        spinner?.classList.toggle("d-none", !busy);
+    }
+    if (searchButton) {
+        const label = searchButton.querySelector(".search-label");
+        if (label) {
+            label.dataset.label = label.textContent;
+        }
+        searchForm.addEventListener("submit", () => setSearchBusy(true));
+        window.addEventListener("pageshow", () => setSearchBusy(false));
+    }
     const results = document.getElementById("results");
-    if (results?.dataset.scroll === "1") {
+    const openingEmptyPopup = Boolean(viewer?.dataset.ra)
+        && !document.querySelector("#results .alert-danger")
+        && document.getElementById("empty-detector-modal")
+        && list
+        && detectorSelect
+        && ![...list.querySelectorAll("[data-id]")].some((item) => item.dataset.detector === detectorSelect.value);
+    if (results?.dataset.scroll === "1" && !openingEmptyPopup) {
         if ("scrollRestoration" in history) {
             history.scrollRestoration = "manual";
         }
@@ -750,6 +811,10 @@
         if (document.querySelector("#results .alert-danger")) {
             return;
         }
+        const y = window.scrollY;
+        const keepPlace = () => window.scrollTo(0, y);
+        modalElement.addEventListener("show.bs.modal", keepPlace, {once: true});
+        modalElement.addEventListener("shown.bs.modal", keepPlace, {once: true});
         bootstrap.Modal.getOrCreateInstance(modalElement).show();
     }
 
@@ -982,6 +1047,13 @@
         function drawCutout({recenter = false, zoom = false} = {}) {
             const position = skyPosition();
             const side = cutoutSideDeg();
+            if (!raField.value.trim() && !decField.value.trim()) {
+                cutoutOverlay.removeAll();
+                if (side != null) {
+                    updateSummary();
+                }
+                return;
+            }
             if (!position || side == null) {
                 summary.textContent = messages.coordinatesUnread;
                 return;

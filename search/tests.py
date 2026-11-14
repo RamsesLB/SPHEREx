@@ -1,5 +1,6 @@
 import json
 import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -13,7 +14,7 @@ from django.test import RequestFactory, SimpleTestCase, TestCase, override_setti
 from django.utils import timezone
 
 from search import services, views
-from search.models import SpherexImage
+from search.models import SpherexCollection, SpherexImage
 
 
 def _sky_header():
@@ -111,19 +112,21 @@ class FitsImageCacheTests(SimpleTestCase):
         self.assertEqual(first.name, second.name)
 
     @override_settings(IMAGE_MODE="fits")
-    def test_fits_mode_stores_the_fits_and_not_the_png(self):
+    def test_fits_mode_stores_the_fits_and_the_png(self):
         calls = []
         media = tempfile.TemporaryDirectory()
         self.addCleanup(media.cleanup)
         with self._patch_download(calls), patch("search.services.default_storage", self.storage), override_settings(MEDIA_ROOT=media.name):
             first = services.cached_cutout(self.image, "133.795", "-7.245", 10)
+            stored_name = f"media/cutouts/{first.name}"
             self.assertTrue(self.storage.exists("fits-cache/v1_7.fits"))
-            self.assertFalse(self.storage.exists(f"media/cutouts/{first.name}"))
+            self.assertTrue(self.storage.exists(stored_name))
             first.unlink()
             second = services.cached_cutout(self.image, "133.795", "-7.245", 10)
 
         self.assertEqual(len(calls), 1)
         self.assertTrue(second.exists())
+        self.assertGreater(second.stat().st_size, 0)
 
 
 class CoordinateParseTests(SimpleTestCase):
@@ -257,6 +260,26 @@ class SearchStoreTests(TestCase):
         with self.assertRaises(services.SearchError):
             services.search_and_store("10", "0", collection="spherex_dr1")
 
+    @patch("search.services.Irsa.query_sia")
+    def test_stores_every_sia_row_and_returns_the_newest_for_the_list(self, query):
+        total = services.MAX_RESULTS + 5
+        query.return_value = Table({
+            "access_url": [f"https://example.test/all-{index}.fits" for index in range(total)],
+            "obs_id": [f"obs-{index}" for index in range(total)],
+            "s_ra": [10.0] * total,
+            "s_dec": [0.0] * total,
+            "s_region": ["POLYGON ICRS 8 -2 12 -2 12 2 8 2"] * total,
+            "t_min": [60000.0 + index for index in range(total)],
+            "em_min": [1.1e-6] * total,
+            "em_max": [1.6e-6] * total,
+            "energy_bandpassname": ["SPHEREx-D2"] * total,
+        })
+        images, new_count = services.search_and_store("10", "0", collection="spherex_dr1")
+        self.assertEqual(new_count, total)
+        self.assertEqual(SpherexImage.objects.count(), total)
+        self.assertEqual(len(images), services.MAX_RESULTS)
+        self.assertEqual(images[-1].obs_id, f"obs-{total - 1}")
+
 
 class RefreshViewTests(TestCase):
     def setUp(self):
@@ -281,3 +304,90 @@ class RefreshViewTests(TestCase):
         self.assertEqual(body["status"], "unavailable")
         self.assertEqual(body["irsa_state"], "failed")
         self.assertNotIn("frames", body)
+
+
+class CutoutViewTests(TestCase):
+    def test_response_contains_the_png_bytes(self):
+        image = _image()
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        path = Path(folder.name) / "cut.png"
+        payload = b"\x89PNG\r\n\x1a\nrest"
+        path.write_bytes(payload)
+        request = RequestFactory().get("/", {"ra": "10", "dec": "0", "fov": "60", "unit": "arcsec"})
+        with patch("search.services.cached_cutout", return_value=path):
+            response = views.cutout(request, image.pk)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(response.content, payload)
+
+    def test_empty_file_is_an_error(self):
+        image = _image(access_url="https://example.test/empty.fits")
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        path = Path(folder.name) / "empty.png"
+        path.write_bytes(b"")
+        request = RequestFactory().get("/", {"ra": "10", "dec": "0", "fov": "60", "unit": "arcsec"})
+        with patch("search.services.cached_cutout", return_value=path):
+            response = views.cutout(request, image.pk)
+        self.assertEqual(response.status_code, 502)
+        self.assertIn(b"could not be generated", response.content)
+
+
+class CollectionLabelTests(SimpleTestCase):
+    def test_data_release_labels(self):
+        self.assertEqual(str(services.collection_label("spherex_dr1")), "Data Release 1")
+        self.assertEqual(str(services.collection_label("spherex_dr1_deep")), "Data Release 1 (deep survey)")
+        self.assertEqual(str(services.collection_label("spherex_dr1_cube")), "Data Release 1 (cube)")
+
+
+class CollectionSyncTests(TestCase):
+    def setUp(self):
+        services._COLLECTION_CACHE["names"] = []
+        services._COLLECTION_CACHE["expires"] = 0.0
+        SpherexCollection.objects.all().delete()
+
+    def tearDown(self):
+        services._COLLECTION_CACHE["names"] = []
+        services._COLLECTION_CACHE["expires"] = 0.0
+
+    @patch("search.services.Irsa.list_collections")
+    def test_irsa_success_stores_new_names(self, list_collections):
+        list_collections.return_value = Table({"collection": ["spherex_dr1", "spherex_qr3"]})
+        names = services.list_spherex_collections()
+        self.assertEqual(names, ["spherex_qr3", "spherex_dr1"])
+        self.assertEqual(
+            set(SpherexCollection.objects.values_list("name", flat=True)),
+            {"spherex_dr1", "spherex_qr3"},
+        )
+
+    @patch("search.services.Irsa.list_collections", side_effect=RuntimeError("502"))
+    def test_irsa_failure_uses_database_rows(self, _list_collections):
+        SpherexCollection.objects.create(name="spherex_dr1")
+        SpherexCollection.objects.create(name="spherex_qr3")
+        names = services.list_spherex_collections()
+        self.assertEqual(names, ["spherex_qr3", "spherex_dr1"])
+
+    @patch("search.services.Irsa.list_collections", side_effect=RuntimeError("502"))
+    def test_irsa_failure_with_empty_database_uses_fallback(self, _list_collections):
+        names = services.list_spherex_collections()
+        self.assertEqual(names, list(services.FALLBACK_COLLECTIONS))
+
+    @patch("search.services.Irsa.list_collections")
+    def test_memory_ttl_skips_a_second_irsa_call(self, list_collections):
+        list_collections.return_value = Table({"collection": ["spherex_qr3"]})
+        first = services.list_spherex_collections()
+        second = services.list_spherex_collections()
+        self.assertEqual(first, ["spherex_qr3"])
+        self.assertEqual(second, ["spherex_qr3"])
+        self.assertEqual(list_collections.call_count, 1)
+
+    @patch("search.services.Irsa.list_collections")
+    def test_changed_remote_set_replaces_database_rows(self, list_collections):
+        SpherexCollection.objects.create(name="spherex_qr2")
+        list_collections.return_value = Table({"collection": ["spherex_dr1", "spherex_qr3"]})
+        services.list_spherex_collections()
+        self.assertEqual(
+            set(SpherexCollection.objects.values_list("name", flat=True)),
+            {"spherex_dr1", "spherex_qr3"},
+        )

@@ -25,7 +25,7 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 from PIL import Image
 
-from .models import SpherexImage
+from .models import SpherexCollection, SpherexImage
 
 conf.remote_timeout = 120
 
@@ -37,8 +37,12 @@ FALLBACK_COLLECTIONS = (
     "spherex_qr3_deep",
     "spherex_qr2",
     "spherex_qr2_deep",
+    "spherex_dr1",
+    "spherex_dr1_cube",
+    "spherex_dr1_deep",
 )
 SEARCH_RADIUS = 1 * u.arcsec
+# Cap for the observations list and the local-cache preview. Every SIA row is stored.
 MAX_RESULTS = 80
 FOOTPRINT_HALF_DEG = 2.0
 MAX_REGION_RADIUS_DEG = 10.0
@@ -174,7 +178,7 @@ def search_and_store(ra, dec, collection=None):
 
     saved = []
     new_count = 0
-    for row in _most_recent(results, MAX_RESULTS):
+    for row in _ordered_sia_rows(results):
         url = _text(_cell(row, "access_url"), limit=1000)
         if not url:
             continue
@@ -206,7 +210,7 @@ def search_and_store(ra, dec, collection=None):
         saved.append(image)
 
     saved.sort(key=lambda image: (image.observation_date, image.obs_id))
-    return saved, new_count
+    return saved[-MAX_RESULTS:], new_count
 
 
 def _bbox_from_region(region):
@@ -261,7 +265,7 @@ def cached_cutout(image, ra, dec, fov_arcsec):
         return path
 
     key = _cutout_object_key(path.name)
-    if settings.IMAGE_MODE == "image" and _restore_cutout(key, path):
+    if _restore_cutout(key, path):
         return path
 
     png = render_cutout(image, coord, fov_arcsec)
@@ -269,8 +273,10 @@ def cached_cutout(image, ra, dec, fov_arcsec):
     temporary = path.with_suffix(".part")
     png.save(temporary, format="PNG")
     temporary.replace(path)
-    if settings.IMAGE_MODE == "image":
-        _store_cutout(key, path)
+    if path.stat().st_size <= 0:
+        path.unlink(missing_ok=True)
+        raise SearchError(_("The cutout was empty."))
+    _store_cutout(key, path)
     return path
 
 
@@ -298,24 +304,32 @@ def render_cutout(image, coord, fov_arcsec):
 
 
 def collection_choices():
-    names = list_spherex_collections() or list(FALLBACK_COLLECTIONS)
-    return [(name, collection_label(name)) for name in sort_collections(names)]
+    return [(name, collection_label(name)) for name in sort_collections(list_spherex_collections())]
 
 
 def collection_label(name):
     match = re.search(r"qr(\d+)", name)
-    if not match:
-        return name
-    number = match.group(1)
-    if name.endswith("_deep"):
-        return _("Quick Release %(number)s (deep survey)") % {"number": number}
-    return _("Quick Release %(number)s (wide survey)") % {"number": number}
+    if match:
+        number = match.group(1)
+        if name.endswith("_deep"):
+            return _("Quick Release %(number)s (deep survey)") % {"number": number}
+        return _("Quick Release %(number)s (wide survey)") % {"number": number}
+    match = re.search(r"dr(\d+)", name)
+    if match:
+        number = match.group(1)
+        if name.endswith("_deep"):
+            return _("Data Release %(number)s (deep survey)") % {"number": number}
+        if name.endswith("_cube"):
+            return _("Data Release %(number)s (cube)") % {"number": number}
+        return _("Data Release %(number)s") % {"number": number}
+    return name
 
 
 def sort_collections(names):
     def key(name):
         deep = 1 if str(name).endswith("_deep") else 0
-        return (-_release_number(name), deep, name)
+        cube = 1 if str(name).endswith("_cube") else 0
+        return (-_release_number(name), cube, deep, name)
 
     return sorted(names, key=key)
 
@@ -323,7 +337,7 @@ def sort_collections(names):
 def default_collection(names=None):
     ordered = sort_collections(names or [choice[0] for choice in collection_choices()])
     for name in ordered:
-        if not name.endswith("_deep"):
+        if not name.endswith("_deep") and not name.endswith("_cube"):
             return name
     return ordered[0] if ordered else DEFAULT_COLLECTION
 
@@ -348,6 +362,26 @@ def list_spherex_collections():
     now = time.monotonic()
     if _COLLECTION_CACHE["names"] and now < _COLLECTION_CACHE["expires"]:
         return list(_COLLECTION_CACHE["names"])
+
+    remote = _fetch_irsa_collections()
+    if remote:
+        _sync_collections(remote)
+        names = sort_collections(remote)
+        _cache_collections(names, now)
+        return names
+
+    stored = list(SpherexCollection.objects.values_list("name", flat=True))
+    if stored:
+        names = sort_collections(stored)
+        _cache_collections(names, now)
+        return names
+
+    names = list(FALLBACK_COLLECTIONS)
+    _cache_collections(names, now)
+    return names
+
+
+def _fetch_irsa_collections():
     try:
         table = Irsa.list_collections(servicetype="SIA", filter="spherex")
     except Exception:
@@ -355,11 +389,24 @@ def list_spherex_collections():
         return []
     if table is None or "collection" not in getattr(table, "colnames", []):
         return []
-    names = [str(name) for name in table["collection"] if str(name).strip()]
-    if names:
-        _COLLECTION_CACHE["names"] = names
-        _COLLECTION_CACHE["expires"] = now + 600
-    return names
+    return [str(name) for name in table["collection"] if str(name).strip()]
+
+
+def _sync_collections(names):
+    incoming = set(names)
+    current = set(SpherexCollection.objects.values_list("name", flat=True))
+    if incoming == current:
+        return
+    SpherexCollection.objects.filter(name__in=current - incoming).delete()
+    SpherexCollection.objects.bulk_create(
+        [SpherexCollection(name=name) for name in sorted(incoming - current)],
+        ignore_conflicts=True,
+    )
+
+
+def _cache_collections(names, now=None):
+    _COLLECTION_CACHE["names"] = list(names)
+    _COLLECTION_CACHE["expires"] = (time.monotonic() if now is None else now) + 600
 
 
 def em_to_um(value):
@@ -585,12 +632,12 @@ def _store_cutout(key, path):
         logger.exception("Could not store cutout %s", key)
 
 
-def _most_recent(results, limit):
+def _ordered_sia_rows(results):
+    """Every SIA row, oldest first so the newest stay at the end for the visible list."""
     if "t_min" not in results.colnames:
-        return results[:limit]
+        return list(results)
     times = np.array([_optional_float(_cell(row, "t_min")) or -1 for row in results])
-    order = np.argsort(times)[-limit:]
-    return results[order]
+    return [results[index] for index in np.argsort(times)]
 
 
 def _mjd_to_datetime(value):

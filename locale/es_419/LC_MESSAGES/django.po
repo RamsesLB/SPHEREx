@@ -120,6 +120,15 @@ msgstr "Quick Release %(number)s (sondeo profundo)"
 msgid "Quick Release %(number)s (wide survey)"
 msgstr "Quick Release %(number)s (sondeo amplio)"
 
+msgid "Data Release %(number)s"
+msgstr "Data Release %(number)s"
+
+msgid "Data Release %(number)s (cube)"
+msgstr "Data Release %(number)s (cubo)"
+
+msgid "Data Release %(number)s (deep survey)"
+msgstr "Data Release %(number)s (sondeo profundo)"
+
 msgid "RA and Dec could not be read. Use 08h55m10.831s and -7d14m42.53s, or decimal degrees."
 msgstr "No se pudieron leer RA y Dec. Usa 08h55m10.831s y -7d14m42.53s, o grados decimales."
 
@@ -131,6 +140,9 @@ msgstr "Ascensión recta"
 
 msgid "Search"
 msgstr "Buscar"
+
+msgid "Searching…"
+msgstr "Buscando…"
 
 msgid "Search a sky position to play the sequence."
 msgstr "Busca un punto del cielo para reproducir la secuencia."

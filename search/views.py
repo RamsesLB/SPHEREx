@@ -1,7 +1,7 @@
 import logging
 from urllib.parse import urlencode
 
-from django.http import FileResponse, HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils import timezone
@@ -117,7 +117,7 @@ def cutout(request, pk):
             content_type="text/plain; charset=utf-8",
         )
     try:
-        return FileResponse(path.open("rb"), content_type="image/png")
+        payload = path.read_bytes()
     except Exception:
         logger.exception("Could not read cutout file for image %s", pk)
         return HttpResponse(
@@ -125,6 +125,14 @@ def cutout(request, pk):
             status=502,
             content_type="text/plain; charset=utf-8",
         )
+    if not payload:
+        logger.error("Cutout file for image %s was empty", pk)
+        return HttpResponse(
+            _("The cutout could not be generated."),
+            status=502,
+            content_type="text/plain; charset=utf-8",
+        )
+    return HttpResponse(payload, content_type="image/png")
 
 
 def health_check(request):
@@ -247,8 +255,8 @@ def _frame_payload(image):
 
 
 def _map_target(form):
-    ra = form["ra"].value() or form.fields["ra"].initial
-    dec = form["dec"].value() or form.fields["dec"].initial
+    ra = form["ra"].value() or ""
+    dec = form["dec"].value() or ""
     try:
         coord = services.parse_coordinates(ra, dec)
     except services.SearchError:

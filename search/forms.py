@@ -9,7 +9,6 @@ class CoordinateForm(forms.Form):
         label=_("Right ascension"),
         max_length=50,
         required=True,
-        initial="08h55m10.831s",
         widget=forms.TextInput(attrs={
             "class": "form-control",
             "id": "ra",
@@ -22,7 +21,6 @@ class CoordinateForm(forms.Form):
         label=_("Declination"),
         max_length=50,
         required=True,
-        initial="-7d14m42.53s",
         widget=forms.TextInput(attrs={
             "class": "form-control",
             "id": "dec",
@@ -84,10 +82,6 @@ class CoordinateForm(forms.Form):
             (str(number), _("Detector %(number)s") % {"number": number})
             for number in range(1, 7)
         ]
-        if not self.is_bound:
-            for name in ("ra", "dec"):
-                attrs = self.fields[name].widget.attrs
-                attrs["class"] = f"{attrs.get('class', '')} is-example".strip()
 
     def clean_ra(self):
         return services.normalize_angle(self.cleaned_data.get("ra", ""))
