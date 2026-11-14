@@ -75,8 +75,20 @@ msgstr "Faltan RA y Dec."
 msgid "Next"
 msgstr "Siguiente"
 
+msgid "Accept"
+msgstr "Aceptar"
+
+msgid "Close"
+msgstr "Cerrar"
+
+msgid "No observations"
+msgstr "Sin observaciones"
+
 msgid "No observations for this detector."
 msgstr "No hay observaciones de este detector."
+
+msgid "No observations were found for this collection and this detector. Try another detector or another area of the sky."
+msgstr "No se encontraron observaciones para esta colección y este detector. Prueba con otro detector o con otra zona del cielo."
 
 msgid "No results."
 msgstr "Sin resultados."

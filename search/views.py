@@ -90,7 +90,15 @@ def cutout(request, pk):
             status=502,
             content_type="text/plain; charset=utf-8",
         )
-    return FileResponse(path.open("rb"), content_type="image/png")
+    try:
+        return FileResponse(path.open("rb"), content_type="image/png")
+    except Exception:
+        logger.exception("Could not read cutout file for image %s", pk)
+        return HttpResponse(
+            _("The cutout could not be generated."),
+            status=502,
+            content_type="text/plain; charset=utf-8",
+        )
 
 
 def health_check(request):

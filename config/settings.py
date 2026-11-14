@@ -185,12 +185,12 @@ STORAGES = {
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# off: download each FITS, cut out, and keep only the PNG.
-# r2: store the IMAGE extension on Cloudflare R2 and cut later frames from that file.
-FITS_IMAGE_CACHE = os.environ.get("FITS_IMAGE_CACHE", "off").strip().lower()
-if FITS_IMAGE_CACHE not in {"off", "r2"}:
+# image: persist each PNG cutout on Cloudflare R2 under media/cutouts/.
+# fits: persist the IMAGE extension on R2 under fits-cache/ and cut from that file.
+IMAGE_MODE = os.environ.get("IMAGE_MODE", "image").strip().lower()
+if IMAGE_MODE not in {"image", "fits"}:
     raise ImproperlyConfigured(
-        "FITS_IMAGE_CACHE must be 'off' or 'r2'."
+        "IMAGE_MODE must be 'image' or 'fits'."
     )
 
 # Email

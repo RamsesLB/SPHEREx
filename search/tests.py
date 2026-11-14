@@ -46,7 +46,7 @@ class FitsImageCacheTests(SimpleTestCase):
 
         return patch("search.services._open_image", fake_open)
 
-    @override_settings(FITS_IMAGE_CACHE="r2")
+    @override_settings(IMAGE_MODE="fits")
     def test_r2_mode_downloads_once_and_reuses_the_stored_image(self):
         calls = []
         with self._patch_download(calls), patch("search.services.default_storage", self.storage):
@@ -61,7 +61,7 @@ class FitsImageCacheTests(SimpleTestCase):
         self.assertNotIn("XTENSION", second_header)
         self.assertTrue(self.storage.exists("fits-cache/v1_7.fits"))
 
-    @override_settings(FITS_IMAGE_CACHE="off")
+    @override_settings(IMAGE_MODE="image")
     def test_off_mode_keeps_downloading_the_fits_for_each_cutout(self):
         calls = []
         coord = SkyCoord(133.795, -7.245, unit="deg")
@@ -74,10 +74,10 @@ class FitsImageCacheTests(SimpleTestCase):
             services.render_cutout(self.image, coord, 10)
             services.render_cutout(self.image, coord, 10)
 
-        self.assertEqual(calls, [False, False])
+        self.assertEqual(calls, [True, True])
         cached.assert_not_called()
 
-    @override_settings(FITS_IMAGE_CACHE="r2")
+    @override_settings(IMAGE_MODE="fits")
     def test_r2_mode_cuts_from_the_cached_image(self):
         calls = []
         coord = SkyCoord(133.795, -7.245, unit="deg")
@@ -86,3 +86,36 @@ class FitsImageCacheTests(SimpleTestCase):
             services.render_cutout(self.image, coord, 12)
 
         self.assertEqual(len(calls), 1)
+
+    @override_settings(IMAGE_MODE="image")
+    def test_image_mode_stores_the_png_cutout_and_not_the_fits(self):
+        calls = []
+        media = tempfile.TemporaryDirectory()
+        self.addCleanup(media.cleanup)
+        with self._patch_download(calls), patch("search.services.default_storage", self.storage), override_settings(MEDIA_ROOT=media.name):
+            first = services.cached_cutout(self.image, "133.795", "-7.245", 10)
+            stored_name = f"media/cutouts/{first.name}"
+            self.assertTrue(self.storage.exists(stored_name))
+            self.assertFalse(self.storage.exists("fits-cache/v1_7.fits"))
+            first.unlink()
+            second = services.cached_cutout(self.image, "133.795", "-7.245", 10)
+
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(second.exists())
+        self.assertGreater(second.stat().st_size, 0)
+        self.assertEqual(first.name, second.name)
+
+    @override_settings(IMAGE_MODE="fits")
+    def test_fits_mode_stores_the_fits_and_not_the_png(self):
+        calls = []
+        media = tempfile.TemporaryDirectory()
+        self.addCleanup(media.cleanup)
+        with self._patch_download(calls), patch("search.services.default_storage", self.storage), override_settings(MEDIA_ROOT=media.name):
+            first = services.cached_cutout(self.image, "133.795", "-7.245", 10)
+            self.assertTrue(self.storage.exists("fits-cache/v1_7.fits"))
+            self.assertFalse(self.storage.exists(f"media/cutouts/{first.name}"))
+            first.unlink()
+            second = services.cached_cutout(self.image, "133.795", "-7.245", 10)
+
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(second.exists())

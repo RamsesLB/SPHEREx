@@ -161,19 +161,25 @@ def cached_cutout(image, ra, dec, fov_arcsec):
     if path.exists() and path.stat().st_size > 0:
         return path
 
+    key = _cutout_object_key(path.name)
+    if settings.IMAGE_MODE == "image" and _restore_cutout(key, path):
+        return path
+
     png = render_cutout(image, coord, fov_arcsec)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".part")
     png.save(temporary, format="PNG")
     temporary.replace(path)
+    if settings.IMAGE_MODE == "image":
+        _store_cutout(key, path)
     return path
 
 
 def render_cutout(image, coord, fov_arcsec):
-    if settings.FITS_IMAGE_CACHE == "r2":
+    if settings.IMAGE_MODE == "fits":
         data, header = cached_image_hdu(image)
     else:
-        data, header = _open_image(image.access_url)
+        data, header = _open_image(image.access_url, native=True)
     detector = _detector_number(header.get("DETECTOR"))
     if detector and image.detector != detector:
         image.detector = detector
@@ -384,6 +390,37 @@ def _stretch_to_png(data):
 def _cutout_cache_path(image_id, ra_deg, dec_deg, fov_arcsec):
     name = f"v1_{image_id}_{ra_deg:.5f}_{dec_deg:.5f}_{float(fov_arcsec):.2f}.png"
     return Path(settings.MEDIA_ROOT) / "cutouts" / name
+
+
+def _cutout_object_key(filename):
+    return f"media/cutouts/{filename}"
+
+
+def _restore_cutout(key, path):
+    try:
+        if not default_storage.exists(key):
+            return False
+        with default_storage.open(key, "rb") as stored:
+            payload = stored.read()
+        if not payload:
+            return False
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".part")
+        temporary.write_bytes(payload)
+        temporary.replace(path)
+        return True
+    except Exception:
+        logger.exception("Could not read cached cutout %s", key)
+        return False
+
+
+def _store_cutout(key, path):
+    try:
+        if default_storage.exists(key):
+            return
+        default_storage.save(key, ContentFile(path.read_bytes()))
+    except Exception:
+        logger.exception("Could not store cutout %s", key)
 
 
 def _most_recent(results, limit):
