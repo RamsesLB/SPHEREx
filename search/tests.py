@@ -261,8 +261,8 @@ class SearchStoreTests(TestCase):
             services.search_and_store("10", "0", collection="spherex_dr1")
 
     @patch("search.services.Irsa.query_sia")
-    def test_stores_every_sia_row_and_returns_the_newest_for_the_list(self, query):
-        total = services.MAX_RESULTS + 5
+    def test_stores_and_returns_every_sia_row(self, query):
+        total = 85
         query.return_value = Table({
             "access_url": [f"https://example.test/all-{index}.fits" for index in range(total)],
             "obs_id": [f"obs-{index}" for index in range(total)],
@@ -277,7 +277,7 @@ class SearchStoreTests(TestCase):
         images, new_count = services.search_and_store("10", "0", collection="spherex_dr1")
         self.assertEqual(new_count, total)
         self.assertEqual(SpherexImage.objects.count(), total)
-        self.assertEqual(len(images), services.MAX_RESULTS)
+        self.assertEqual(len(images), total)
         self.assertEqual(images[-1].obs_id, f"obs-{total - 1}")
 
 

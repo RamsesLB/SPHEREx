@@ -249,8 +249,6 @@ def _result_info(images, new_count):
             "%(count)s new observations",
             new_count,
         ) % {"count": new_count}
-    if len(images) >= services.MAX_RESULTS:
-        return _("Showing the %(count)s most recent observations.") % {"count": services.MAX_RESULTS}
     return ""
 
 

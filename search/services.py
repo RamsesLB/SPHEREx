@@ -42,8 +42,6 @@ FALLBACK_COLLECTIONS = (
     "spherex_dr1_deep",
 )
 SEARCH_RADIUS = 1 * u.arcsec
-# Cap for the observations list and the local-cache preview. Every SIA row is stored.
-MAX_RESULTS = 80
 FOOTPRINT_HALF_DEG = 2.0
 MAX_REGION_RADIUS_DEG = 10.0
 _COLLECTION_CACHE = {"expires": 0.0, "names": []}
@@ -145,7 +143,7 @@ def local_images_covering(coord, collection):
             dec_max__gte=dec,
         )
         .filter(inside | wrapped)
-        .order_by("-observation_date", "-obs_id")[:MAX_RESULTS]
+        .order_by("-observation_date", "-obs_id")
     )
     return list(reversed(found))
 
@@ -210,7 +208,7 @@ def search_and_store(ra, dec, collection=None):
         saved.append(image)
 
     saved.sort(key=lambda image: (image.observation_date, image.obs_id))
-    return saved[-MAX_RESULTS:], new_count
+    return saved, new_count
 
 
 def _bbox_from_region(region):
