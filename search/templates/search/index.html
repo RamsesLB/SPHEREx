@@ -24,6 +24,11 @@
         justify-content: center;
         gap: 1.75rem;
     }
+    form.sky-layout {
+        min-height: calc(100vh - 5.5rem);
+        min-height: calc(100dvh - 5.5rem);
+        margin-bottom: 3rem;
+    }
     .sky-form { flex: 0 0 28rem; width: 28rem; }
     .sky-form .form-text { font-size: 0.75rem; margin-bottom: 0; }
     .field-row {
@@ -73,7 +78,9 @@
     }
     #results {
         scroll-margin-top: 0.75rem;
+        padding-top: 0.5rem;
         min-height: calc(100vh - 1.5rem);
+        min-height: calc(100dvh - 1.5rem);
     }
     #viewer {
         background: #111;
@@ -92,23 +99,106 @@
         object-fit: contain;
         image-rendering: pixelated;
     }
+    #frame-load {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.12);
+        z-index: 3;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s ease;
+    }
+    #frame-load.is-active {
+        opacity: 1;
+    }
+    #frame-load-bar {
+        display: block;
+        height: 100%;
+        width: 0%;
+        background: #000;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+        transition: none;
+    }
     #result-list { max-height: calc(var(--stage-h) - 1.75rem); overflow: auto; }
     #cutout-box legend { font-size: 1rem; padding: 0 0.4rem; }
     .search-trail {
+        --trail-gap: 0.2rem;
+        --trail-point: 1.15rem;
         display: flex;
+        justify-content: center;
+        align-items: stretch;
         flex-wrap: wrap;
-        gap: 0.35rem 1.25rem;
+        gap: var(--trail-gap);
         list-style: none;
         padding: 0;
-        margin: 0 0 0.85rem;
-        font-size: 0.85rem;
+        margin: 0 auto 1rem;
+        max-width: 44rem;
+        font-size: 0.82rem;
     }
-    .search-trail li { display: flex; gap: 0.4rem; align-items: baseline; }
-    .search-trail .trail-label { font-weight: 600; }
+    .search-trail li {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        flex: 1 1 12rem;
+        min-width: 11rem;
+        max-width: 20rem;
+        margin: 0;
+        padding: 0.7rem calc(1.05rem + var(--trail-point)) 0.7rem calc(0.95rem + var(--trail-point));
+        color: #f4f6f8;
+        background: #2a323a;
+        clip-path: polygon(0 0, calc(100% - var(--trail-point)) 0, 100% 50%, calc(100% - var(--trail-point)) 100%, 0 100%, var(--trail-point) 50%);
+    }
+    .search-trail li:first-child {
+        clip-path: polygon(0 0, calc(100% - var(--trail-point)) 0, 100% 50%, calc(100% - var(--trail-point)) 100%, 0 100%);
+        padding-left: 1rem;
+    }
+    .search-trail li:last-child {
+        clip-path: polygon(0 0, calc(100% - var(--trail-point)) 0, 100% 50%, calc(100% - var(--trail-point)) 100%, 0 100%, var(--trail-point) 50%);
+        padding-right: calc(1.05rem + var(--trail-point));
+    }
+    .search-trail li:only-child {
+        clip-path: none;
+        border-radius: 0.35rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    .search-trail .trail-mark {
+        flex: 0 0 auto;
+        width: 1.2rem;
+        height: 1.2rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #c5cbd1;
+    }
+    .search-trail .trail-mark svg {
+        width: 100%;
+        height: 100%;
+        fill: currentColor;
+        display: block;
+    }
+    .search-trail .trail-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 0.1rem;
+        min-width: 0;
+        line-height: 1.25;
+    }
+    .search-trail .trail-label { font-weight: 600; letter-spacing: 0.01em; }
+    .search-trail .trail-text { opacity: 0.92; }
     .search-trail li[data-state="pending"],
-    .search-trail li[data-state="empty"] { color: #6c757d; }
-    .search-trail li[data-state="ready"] { color: #146c43; }
-    .search-trail li[data-state="failed"] { color: #b02a37; }
+    .search-trail li[data-state="empty"] { background: #6c757d; }
+    .search-trail li[data-state="ready"] { background: #1f6b4a; }
+    .search-trail li[data-step="local"][data-state="ready"] .trail-mark { color: #5fe09a; }
+    .search-trail li[data-step="local"][data-state="empty"] .trail-mark,
+    .search-trail li[data-step="local"][data-state="pending"] .trail-mark { color: #c5cbd1; }
+    .search-trail li[data-step="irsa"]:not([data-state="failed"]) .trail-mark { color: #5fe09a; }
+    .search-trail li[data-state="failed"] { background: #9b2c38; }
+    .search-trail li[data-step="irsa"][data-state="failed"] .trail-mark { color: #ff6b76; }
     .zone-actions {
         display: flex;
         flex-wrap: wrap;
@@ -165,7 +255,7 @@
     </div>
 </nav>
 <div class="container-fluid py-3">
-    <form method="get" class="sky-layout mb-4" autocomplete="off">
+    <form method="get" class="sky-layout" autocomplete="off">
         <div class="sky-form">
             <div id="zone-box" class="step-box">
                 <h2 class="step-title">{% trans "1. Preview" %}</h2>
@@ -223,13 +313,7 @@
                         {% for err in form.collection.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
                     </div>
                 </div>
-                <div class="field-row">
-                    <label class="form-label" for="{{ form.detector.id_for_label }}">{{ form.detector.label }}</label>
-                    <div class="field-control">
-                        {{ form.detector }}
-                        {% for err in form.detector.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
-                    </div>
-                </div>
+                <input type="hidden" name="detector" id="detector-hidden" value="{{ form.detector.value|default:form.detector.field.initial }}">
                 {% for err in form.non_field_errors %}
                 <div class="alert alert-danger py-2 mb-2">{{ err }}</div>
                 {% endfor %}
@@ -253,17 +337,37 @@
         <ol id="search-trail" class="search-trail"
             {% if refresh_url %}data-refresh="{{ refresh_url }}" data-unavailable="{% trans "IRSA did not respond" %}"{% endif %}>
             <li data-step="local" data-state="{{ trail.local_state }}">
-                <span class="trail-label">{% trans "Local database" %}</span>
-                <span class="trail-text">{{ trail.local_text }}</span>
+                <span class="trail-mark" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" focusable="false"><path d="M544 269.8C529.2 279.6 512.2 287.5 494.5 293.8C447.5 310.6 385.8 320 320 320C254.2 320 192.4 310.5 145.5 293.8C127.9 287.5 110.8 279.6 96 269.8L96 352C96 396.2 196.3 432 320 432C443.7 432 544 396.2 544 352L544 269.8zM544 192L544 144C544 99.8 443.7 64 320 64C196.3 64 96 99.8 96 144L96 192C96 236.2 196.3 272 320 272C443.7 272 544 236.2 544 192zM494.5 453.8C447.6 470.5 385.9 480 320 480C254.1 480 192.4 470.5 145.5 453.8C127.9 447.5 110.8 439.6 96 429.8L96 496C96 540.2 196.3 576 320 576C443.7 576 544 540.2 544 496L544 429.8C529.2 439.6 512.2 447.5 494.5 453.8z"/></svg>
+                </span>
+                <span class="trail-copy">
+                    <span class="trail-label">{% trans "Local database" %}</span>
+                    <span class="trail-text">{{ trail.local_text }}</span>
+                </span>
             </li>
             <li data-step="irsa" data-state="{{ trail.irsa_state }}">
-                <span class="trail-label">IRSA</span>
-                <span class="trail-text">{{ trail.irsa_text }}</span>
+                <span class="trail-mark" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" focusable="false"><path d="M160 96C124.7 96 96 124.7 96 160L96 224C96 259.3 124.7 288 160 288L480 288C515.3 288 544 259.3 544 224L544 160C544 124.7 515.3 96 480 96L160 96zM376 168C389.3 168 400 178.7 400 192C400 205.3 389.3 216 376 216C362.7 216 352 205.3 352 192C352 178.7 362.7 168 376 168zM432 192C432 178.7 442.7 168 456 168C469.3 168 480 178.7 480 192C480 205.3 469.3 216 456 216C442.7 216 432 205.3 432 192zM160 352C124.7 352 96 380.7 96 416L96 480C96 515.3 124.7 544 160 544L480 544C515.3 544 544 515.3 544 480L544 416C544 380.7 515.3 352 480 352L160 352zM376 424C389.3 424 400 434.7 400 448C400 461.3 389.3 472 376 472C362.7 472 352 461.3 352 448C352 434.7 362.7 424 376 424zM432 448C432 434.7 442.7 424 456 424C469.3 424 480 434.7 480 448C480 461.3 469.3 472 456 472C442.7 472 432 461.3 432 448z"/></svg>
+                </span>
+                <span class="trail-copy">
+                    <span class="trail-label">IRSA</span>
+                    <span class="trail-text">{{ trail.irsa_text }}</span>
+                </span>
             </li>
         </ol>
         {% endif %}
         <div class="sky-layout">
         <div class="sky-form">
+            <div class="field-row mb-2">
+                <label class="form-label" for="detector">{{ form.detector.label }}</label>
+                <div class="field-control">
+                    <select class="form-select" id="detector">
+                        {% for value, label in form.fields.detector.choices %}
+                        <option value="{{ value }}"{% if form.detector.value|stringformat:"s" == value|stringformat:"s" %} selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
             <div class="d-flex justify-content-between align-items-baseline mb-2">
                 <h2 class="h6 mb-0">{% trans "Observations" %}</h2>
                 <span class="small text-muted" id="visible-count"></span>
@@ -303,6 +407,9 @@
                 <img id="cutout" class="d-none" alt="{% trans "SPHEREx cutout" %}">
                 <div id="loading" class="d-none position-absolute top-0 start-0 w-100 h-100 align-items-center justify-content-center" style="background: rgba(0,0,0,.45);">
                     <span>{% trans "Loading FITS…" %}</span>
+                </div>
+                <div id="frame-load" aria-hidden="true">
+                    <span id="frame-load-bar"></span>
                 </div>
             </div>
             <div class="stage-actions">
@@ -438,6 +545,8 @@
     const viewer = document.getElementById("viewer");
     const cutout = document.getElementById("cutout");
     const loading = document.getElementById("loading");
+    const frameLoad = document.getElementById("frame-load");
+    const frameLoadBar = document.getElementById("frame-load-bar");
     const message = document.getElementById("viewer-message");
     const frameLabel = document.getElementById("frame-label");
     const visibleCount = document.getElementById("visible-count");
@@ -453,6 +562,8 @@
     let frameMs = null;
     let countdownTimer = null;
     let countdownAnchor = null;
+    let frameLoadTimer = null;
+    let frameLoadStartedAt = 0;
     const searchForm = document.querySelector("form.sky-layout");
     const searchButton = searchForm?.querySelector(".btn-search");
     function setSearchBusy(busy) {
@@ -580,6 +691,7 @@
         const startedAt = performance.now();
         let loaded = false;
         setLoading(true);
+        startFrameLoad(startedAt);
         message.classList.add("d-none");
         frameLabel.textContent = `${cursor + 1} / ${frames.length}`;
         try {
@@ -615,6 +727,7 @@
             cutout.classList.add("d-none");
         } finally {
             if (myRequest === requestId) {
+                finishFrameLoad(loaded);
                 setLoading(false);
                 if (loaded) {
                     const elapsed = performance.now() - startedAt;
@@ -626,6 +739,58 @@
                 }
             }
         }
+    }
+
+    function expectedFrameMs() {
+        return Math.max(1200, frameMs == null ? 2800 : frameMs);
+    }
+
+    function paintFrameLoad() {
+        if (!frameLoadBar) {
+            return;
+        }
+        const expected = expectedFrameMs();
+        const ratio = (performance.now() - frameLoadStartedAt) / expected;
+        // Asymptotic fill so a slow first FITS never stalls at 0% or claims 100% early.
+        const pct = Math.min(92, 92 * (1 - Math.exp(-2.2 * ratio)));
+        frameLoadBar.style.width = `${pct}%`;
+    }
+
+    function startFrameLoad(startedAt) {
+        if (!frameLoad || !frameLoadBar) {
+            return;
+        }
+        if (frameLoadTimer) {
+            clearInterval(frameLoadTimer);
+            frameLoadTimer = null;
+        }
+        frameLoadStartedAt = startedAt;
+        frameLoadBar.style.width = "0%";
+        frameLoad.classList.add("is-active");
+        paintFrameLoad();
+        frameLoadTimer = setInterval(paintFrameLoad, 80);
+    }
+
+    function finishFrameLoad(success) {
+        if (!frameLoad || !frameLoadBar) {
+            return;
+        }
+        if (frameLoadTimer) {
+            clearInterval(frameLoadTimer);
+            frameLoadTimer = null;
+        }
+        if (success) {
+            frameLoadBar.style.width = "100%";
+            window.setTimeout(() => {
+                if (!frameLoadTimer) {
+                    frameLoad.classList.remove("is-active");
+                    frameLoadBar.style.width = "0%";
+                }
+            }, 180);
+            return;
+        }
+        frameLoad.classList.remove("is-active");
+        frameLoadBar.style.width = "0%";
     }
 
     function setLoading(active) {
@@ -646,6 +811,7 @@
         }
         setPlayIcon(false);
         hideProgress();
+        finishFrameLoad(false);
     }
 
     function stopCountdown() {
@@ -766,6 +932,10 @@
     detectorSelect.addEventListener("change", () => {
         stop();
         cursor = 0;
+        const hidden = document.getElementById("detector-hidden");
+        if (hidden) {
+            hidden.value = detectorSelect.value;
+        }
         const url = new URL(window.location.href);
         url.searchParams.set("detector", detectorSelect.value);
         history.replaceState({}, "", url);
@@ -781,7 +951,6 @@
         }
         message.textContent = messages.noDetector;
         message.classList.remove("d-none");
-        warnIfEmpty();
     });
     list.addEventListener("click", (event) => {
         const item = event.target.closest("[data-id]");
@@ -970,8 +1139,12 @@
             return;
         }
         const [id, name, url, order, format] = spec;
-        const layer = aladin.createImageSurvey(id, name, url, "equatorial", order, {imgFormat: format});
-        aladin.setBaseImageLayer(layer);
+        if (typeof aladin.createImageSurvey === "function") {
+            const layer = aladin.createImageSurvey(id, name, url, "equatorial", order, {imgFormat: format});
+            aladin.setBaseImageLayer(layer);
+            return;
+        }
+        aladin.setImageSurvey(id);
     }
 
     const raField = document.getElementById("ra");
@@ -1040,9 +1213,18 @@
             if (key === activeSurvey) {
                 return;
             }
-            showSurvey(aladin, key);
-            activeSurvey = key;
+            try {
+                showSurvey(aladin, key);
+                activeSurvey = key;
+            } catch (error) {
+                activeSurvey = null;
+                console.warn("Survey failed to load", key, error);
+            }
         }
+        document.getElementById("survey").addEventListener("change", () => {
+            activeSurvey = null;
+            ensureSurvey();
+        });
 
         function drawCutout({recenter = false, zoom = false} = {}) {
             const position = skyPosition();

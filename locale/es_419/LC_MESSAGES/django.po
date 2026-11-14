@@ -48,6 +48,9 @@ msgstr "Grados"
 msgid "Detector"
 msgstr "Detector"
 
+msgid "Detectors %(list)s"
+msgstr "Detectores %(list)s"
+
 msgid "Detector %(number)s"
 msgstr "Detector %(number)s"
 
@@ -263,9 +266,6 @@ msgstr "Consultando IRSA…"
 
 msgid "IRSA did not respond"
 msgstr "IRSA no respondió"
-
-msgid "IRSA did not respond and there is no cache"
-msgstr "IRSA no respondió y no hay caché"
 
 msgid "No images in this collection"
 msgstr "Sin imágenes en esta colección"

@@ -83,7 +83,7 @@ def refresh(request):
                 "collection": data["collection"],
             },
         })
-    state, text = _irsa_trail("ready", new_count)
+    state, text = _irsa_trail("ready", new_count, images)
     return JsonResponse({
         "status": "updated",
         "frames": [_frame_payload(image) for image in images],
@@ -145,34 +145,34 @@ def _search_page(form):
         coord = services.parse_coordinates(data["ra"], data["dec"])
         local = services.local_images_covering(coord, data["collection"])
     except services.SearchError as exc:
-        local_state, local_text = _local_trail(0)
+        local_state, local_text = _local_trail([])
         irsa_state, irsa_text = _irsa_trail("unavailable_empty", 0)
         return [], str(exc), None, _trail(local_state, local_text, irsa_state, irsa_text), ""
     if local:
         frames = [_frame_payload(image) for image in local]
-        local_state, local_text = _local_trail(len(frames))
+        local_state, local_text = _local_trail(local)
         irsa_state, irsa_text = _irsa_trail("pending", 0)
         return frames, None, _result_info(local, 0), _trail(local_state, local_text, irsa_state, irsa_text), _refresh_url(data)
     try:
         images, new_count = services.search_and_store(data["ra"], data["dec"], collection=data["collection"])
     except services.SearchError as exc:
-        local_state, local_text = _local_trail(0)
+        local_state, local_text = _local_trail([])
         irsa_state, irsa_text = _irsa_trail("unavailable_empty", 0)
         return [], str(exc), None, _trail(local_state, local_text, irsa_state, irsa_text), ""
     except Exception:
         logger.exception("Unexpected IRSA search error")
-        local_state, local_text = _local_trail(0)
+        local_state, local_text = _local_trail([])
         irsa_state, irsa_text = _irsa_trail("unavailable_empty", 0)
         return [], _("IRSA could not be queried. Try again in a few seconds."), None, _trail(local_state, local_text, irsa_state, irsa_text), ""
     frames = [_frame_payload(image) for image in images]
-    local_state, local_text = _local_trail(0)
+    local_state, local_text = _local_trail([])
     if not frames:
         irsa_state, irsa_text = _irsa_trail("empty", 0)
         info = _("IRSA returned no SPHEREx images for this position in %(collection)s.") % {
             "collection": data["collection"],
         }
     else:
-        irsa_state, irsa_text = _irsa_trail("ready", new_count)
+        irsa_state, irsa_text = _irsa_trail("ready", new_count, images)
         info = _result_info(images, new_count)
     return frames, None, info, _trail(local_state, local_text, irsa_state, irsa_text), ""
 
@@ -198,32 +198,48 @@ def _trail(local_state, local_text, irsa_state, irsa_text):
     }
 
 
-def _local_trail(count):
+def _detector_phrase(images):
+    numbers = sorted({image.detector for image in images if getattr(image, "detector", None)})
+    if not numbers:
+        return ""
+    return _("Detectors %(list)s") % {"list": ", ".join(str(number) for number in numbers)}
+
+
+def _with_detectors(text, images):
+    phrase = _detector_phrase(images or [])
+    if not phrase:
+        return text
+    return f"{text} · {phrase}"
+
+
+def _local_trail(images):
+    count = len(images)
     if count:
-        return "ready", ngettext(
+        text = ngettext(
             "%(count)s saved observation",
             "%(count)s saved observations",
             count,
         ) % {"count": count}
+        return "ready", _with_detectors(text, images)
     return "empty", _("Nothing saved for this point")
 
 
-def _irsa_trail(status, new_count):
+def _irsa_trail(status, new_count, images=None):
     if status == "pending":
         return "pending", _("Checking IRSA…")
-    if status == "unavailable":
+    if status in {"unavailable", "unavailable_empty"}:
         return "failed", _("IRSA did not respond")
-    if status == "unavailable_empty":
-        return "failed", _("IRSA did not respond and there is no cache")
     if status == "empty":
         return "empty", _("No images in this collection")
     if new_count:
-        return "ready", ngettext(
+        text = ngettext(
             "%(count)s new observation",
             "%(count)s new observations",
             new_count,
         ) % {"count": new_count}
-    return "ready", _("No new observations")
+    else:
+        text = _("No new observations")
+    return "ready", _with_detectors(text, images)
 
 
 def _result_info(images, new_count):
