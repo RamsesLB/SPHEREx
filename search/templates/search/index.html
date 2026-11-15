@@ -5,18 +5,6 @@
 
 {% block extra_head %}
 <style>
-    .site-nav { background: #000; }
-    .site-nav .navbar-brand {
-        color: #fff;
-        font-weight: 600;
-        cursor: pointer;
-        text-decoration: none;
-    }
-    .site-nav .navbar-brand:hover,
-    .site-nav .navbar-brand:focus {
-        color: #fff;
-    }
-    .lang-globe { width: 1rem; height: 1rem; fill: currentColor; }
     .sky-layout {
         --stage-h: min(calc(100vh - 13.5rem), 780px);
         display: flex;
@@ -156,6 +144,9 @@
         text-align: left;
         min-width: 0;
     }
+    .obs-cols.obs-cols-det {
+        grid-template-columns: minmax(6.5rem, 1.35fr) minmax(2.1rem, 3.2rem) minmax(5rem, 1.1fr) minmax(5rem, 1.1fr);
+    }
     .obs-cols > span {
         min-width: 0;
         overflow: hidden;
@@ -164,6 +155,7 @@
         font-size: 0.8rem;
         line-height: 1.25;
     }
+    .obs-cols .obs-det { text-align: center; }
     #result-list .obs-open,
     #sum-result-list .sum-open {
         font-size: inherit;
@@ -195,7 +187,18 @@
         padding: 0.15rem 0.35rem;
     }
     .sum-results { margin-top: 1.75rem; padding-top: 0.5rem; }
-    .sum-results .sky-layout { --stage-h: min(calc(100vh - 18rem), 520px); }
+    .sum-results .sky-layout { --stage-h: min(calc(100vh - 13.5rem), 780px); }
+    #sum-obs-modal .sum-obs-table-wrap {
+        max-height: min(50vh, 22rem);
+        overflow: auto;
+    }
+    #sum-obs-modal .sum-obs-table-wrap thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background-color: var(--bs-body-bg, #fff);
+        box-shadow: inset 0 -1px 0 var(--bs-border-color);
+    }
     #sum-viewer {
         background: #111;
         color: #ddd;
@@ -223,6 +226,15 @@
         position: relative;
         overflow: hidden;
     }
+    .wise-mark {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 2;
+    }
+    .wise-caption { margin: 0.35rem 0 0; }
     #cutout-box legend { font-size: 1rem; padding: 0 0.4rem; }
     .search-trail {
         --trail-gap: 0.2rem;
@@ -330,36 +342,12 @@
 {% block body %}
 {{ messages_json|json_script:"ui-messages" }}
 {{ example_objects_json|json_script:"example-objects" }}
-<nav class="navbar navbar-dark site-nav px-3">
-    <a class="navbar-brand mb-0" id="site-home" href="{% url 'index' %}">SPHEREx</a>
-    <div class="dropdown">
-        <button class="btn btn-outline-light btn-sm dropdown-toggle d-inline-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-            <svg class="lang-globe" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path d="M352 256c0 22.2-1.2 43.6-3.3 64H163.3c-2.2-20.4-3.3-41.8-3.3-64s1.2-43.6 3.3-64H348.7c2.2 20.4 3.3 41.8 3.3 64zm28.8-64H465c11.5 20.2 18.4 43.3 19.8 68-1.4 24.7-8.3 47.8-19.8 68H380.8c2.1-21.5 3.2-43.6 3.2-64s-1.1-42.5-3.2-64zM131.2 256c0 20.4 1.1 42.5 3.2 64H47c-11.5-20.2-18.4-43.3-19.8-68 1.4-24.7 8.3-47.8 19.8-68h87.4c-2.1 21.5-3.2 43.6-3.2 64zm20.8-96h207.8c-6.1-32.5-18.5-61.4-35.4-85.2C307.5 50.2 283.4 32 256 32s-51.5 18.2-68.4 42.8C170.5 98.6 158.1 127.5 152 160zm207.8 192H152c6.1 32.5 18.5 61.4 35.4 85.2C204.5 461.8 228.6 480 256 480s51.5-18.2 68.4-42c16.9-23.8 29.3-52.7 35.4-85.2zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256z"/></svg>
-            {% if LANGUAGE_CODE == "es-419" %}Español{% else %}English{% endif %}
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end">
-            <li>
-                <form action="{% url 'set_language' %}" method="post">
-                    {% csrf_token %}
-                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                    <button class="dropdown-item" name="language" value="en" type="submit">English</button>
-                </form>
-            </li>
-            <li>
-                <form action="{% url 'set_language' %}" method="post">
-                    {% csrf_token %}
-                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                    <button class="dropdown-item" name="language" value="es-419" type="submit">Español</button>
-                </form>
-            </li>
-        </ul>
-    </div>
-</nav>
 <div class="container-fluid py-3">
     <form method="get" class="sky-layout" autocomplete="off">
         <div class="sky-form">
             <div id="zone-box" class="step-box">
-                <h2 class="step-title" id="preview-title"><span>{% trans "1. Preview" %}</span><span id="preview-object" class="fw-normal text-muted"></span></h2>
+                <h2 class="step-title" id="preview-title"><span>{% trans "1. Preview" %}</span><span id="preview-object" class="fw-normal text-muted">{% if request.GET.object %} (obj. {{ request.GET.object }}){% endif %}</span></h2>
+                <input type="hidden" name="object" id="preview-object-value" value="{{ request.GET.object|default:'' }}">
                 <div class="field-row">
                     <label class="form-label" for="survey">{% trans "Base survey" %}</label>
                     <div class="field-control">
@@ -535,16 +523,19 @@
                  data-cutout-pattern="{% url 'cutout' 0 %}"
                  data-sum-pattern="{% url 'sum_cutout' %}"
                  data-diff-pattern="{% url 'diff_cutout' %}"
+                 data-allwise-pattern="{% url 'allwise_catalog' %}"
                  {% endif %}>
                 <p id="viewer-message" class="m-3 text-center">
                     {% trans "Click an observation, or tick several checkboxes and press play." %}
                 </p>
                 <img id="cutout" class="d-none" alt="{% trans "SPHEREx cutout" %}">
+                <canvas id="wise-mark" class="wise-mark d-none"></canvas>
                 <div id="loading" class="d-none position-absolute top-0 start-0 w-100 h-100 align-items-center justify-content-center" style="background: rgba(0,0,0,.45);">
                     <span class="spinner-border process-spin" aria-hidden="true"></span>
                     <span>{% trans "Loading FITS…" %}</span>
                 </div>
             </div>
+            <p id="wise-caption" class="wise-caption small text-muted d-none"></p>
             <div class="stage-actions">
                 <button type="button" class="btn btn-outline-secondary btn-sm icon-btn" id="prev" aria-label="{% trans "Previous" %}">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M491 100.8C478.1 93.8 462.3 94.5 450 102.6L192 272.1L192 128C192 110.3 177.7 96 160 96C142.3 96 128 110.3 128 128L128 512C128 529.7 142.3 544 160 544C177.7 544 192 529.7 192 512L192 367.9L450 537.5C462.3 545.6 478 546.3 491 539.3C504 532.3 512 518.8 512 504.1L512 136.1C512 121.4 503.9 107.9 491 100.9z"/></svg>
@@ -562,6 +553,10 @@
                 <button type="button" class="btn btn-outline-secondary btn-sm icon-btn" id="diff-open" aria-pressed="false" aria-label="{% trans "Subtract" %}">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M96 320C96 302.3 110.3 288 128 288H512C529.7 288 544 302.3 544 320C544 337.7 529.7 352 512 352H128C110.3 352 96 337.7 96 320z"/></svg>
                 </button>
+                <label class="small text-muted d-flex align-items-center gap-1 mb-0" for="wise-toggle">
+                    <input class="form-check-input m-0" type="checkbox" id="wise-toggle">
+                    {% trans "AllWISE 2010" %}
+                </label>
                 <span id="frame-label" class="small text-muted"></span>
             </div>
             <p id="sum-status" class="small text-muted d-none mb-0 mt-2"></p>
@@ -589,8 +584,9 @@
                     </div>
                     <div class="obs-head">
                         <input class="form-check-input" type="checkbox" id="select-all-sum" checked aria-label="{% trans "Select all" %}">
-                        <div class="obs-cols">
+                        <div class="obs-cols obs-cols-det">
                             <span>{% trans "Date" %}</span>
+                            <span class="obs-det">{% trans "Det." %}</span>
                             <span>{% trans "Observation" %}</span>
                             <span>{% trans "Collection" %}</span>
                         </div>
@@ -601,7 +597,9 @@
                     <div id="sum-viewer" class="stage-frame rounded">
                         <p id="sum-viewer-message" class="m-3 text-center">{% trans "Choose a summed image." %}</p>
                         <img id="sum-cutout" class="d-none" alt="{% trans "SPHEREx cutout" %}">
+                        <canvas id="sum-wise-mark" class="wise-mark d-none"></canvas>
                     </div>
+                    <p id="sum-wise-caption" class="wise-caption small text-muted d-none"></p>
                     <div class="stage-actions">
                         <button type="button" class="btn btn-outline-secondary btn-sm icon-btn" id="sum-prev" aria-label="{% trans "Previous" %}">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M491 100.8C478.1 93.8 462.3 94.5 450 102.6L192 272.1L192 128C192 110.3 177.7 96 160 96C142.3 96 128 110.3 128 128L128 512C128 529.7 142.3 544 160 544C177.7 544 192 529.7 192 512L192 367.9L450 537.5C462.3 545.6 478 546.3 491 539.3C504 532.3 512 518.8 512 504.1L512 136.1C512 121.4 503.9 107.9 491 100.9z"/></svg>
@@ -630,8 +628,9 @@
                     </div>
                     <div class="obs-head" aria-hidden="true">
                         <span class="obs-head-spacer"></span>
-                        <div class="obs-cols">
+                        <div class="obs-cols obs-cols-det">
                             <span>{% trans "Date" %}</span>
+                            <span class="obs-det">{% trans "Det." %}</span>
                             <span>{% trans "Observation" %}</span>
                             <span>{% trans "Collection" %}</span>
                         </div>
@@ -642,7 +641,9 @@
                     <div id="diff-viewer" class="stage-frame rounded">
                         <p id="diff-viewer-message" class="m-3 text-center">{% trans "Choose a subtracted image." %}</p>
                         <img id="diff-cutout" class="d-none" alt="{% trans "SPHEREx cutout" %}">
+                        <canvas id="diff-wise-mark" class="wise-mark d-none"></canvas>
                     </div>
+                    <p id="diff-wise-caption" class="wise-caption small text-muted d-none"></p>
                 </div>
             </div>
         </div>
@@ -699,7 +700,7 @@
                 <div class="modal-body">
                     <p class="small text-muted" id="sum-obs-help">{% trans "Choose the observations to include. Each checked observation becomes one summed image. Confirm with none checked to keep every match." %}</p>
                     <p id="sum-obs-error" class="text-danger small d-none mb-2"></p>
-                    <div class="table-responsive">
+                    <div class="sum-obs-table-wrap">
                         <table class="table table-sm align-middle mb-0">
                             <thead>
                                 <tr>
@@ -957,7 +958,14 @@
         all.disabled = boxes.length === 0;
     }
 
-    function appendObsCols(parent, {date, obsId, collection}) {
+    function detectorCell(value) {
+        if (Array.isArray(value)) {
+            return value.filter(Boolean).join("+");
+        }
+        return value == null || value === "" ? "" : String(value);
+    }
+
+    function appendObsCols(parent, {date, detector, obsId, collection, showDetector = false} = {}) {
         const dateEl = document.createElement("span");
         dateEl.className = "obs-date";
         dateEl.textContent = date || "";
@@ -972,6 +980,13 @@
         colEl.textContent = collection || "";
         if (collection) {
             colEl.title = collection;
+        }
+        if (showDetector) {
+            const detEl = document.createElement("span");
+            detEl.className = "obs-det";
+            detEl.textContent = detectorCell(detector);
+            parent.append(dateEl, detEl, idEl, colEl);
+            return;
         }
         parent.append(dateEl, idEl, colEl);
     }
@@ -1402,9 +1417,32 @@
         setPlayIcon(false);
         hideProgress();
         finishFrameLoad(false);
-        clearProcessSpin(document.getElementById("sum-status"));
-        clearProcessSpin(sumViewerMessage);
-        clearProcessSpin(diffViewerMessage);
+        settleBusyMessages();
+    }
+
+    function settleBusyMessages() {
+        const progressLabel = document.getElementById("play-progress-label");
+        setProcessMessage(progressLabel, "", false);
+        if (sumSequence?.length && sumResultsReady) {
+            const done = stackOp === "diff"
+                ? messages.diffCount.replace("%(count)s", String(sumSequence.length))
+                : messages.sumCount.replace("%(count)s", String(sumSequence.length));
+            setSumStatus(done, false);
+        } else {
+            stripProcessSpin(document.getElementById("sum-status"));
+        }
+        if (sumCutout && !sumCutout.classList.contains("d-none")) {
+            sumViewerMessage?.classList.add("d-none");
+            stripProcessSpin(sumViewerMessage);
+        } else {
+            stripProcessSpin(sumViewerMessage);
+        }
+        if (diffCutout && !diffCutout.classList.contains("d-none")) {
+            diffViewerMessage?.classList.add("d-none");
+            stripProcessSpin(diffViewerMessage);
+        } else {
+            stripProcessSpin(diffViewerMessage);
+        }
     }
 
     function stopCountdown() {
@@ -1443,11 +1481,15 @@
         if (sumFrameLabel) {
             sumFrameLabel.textContent = label || "";
         }
-        setProcessMessage(
-            sumViewerMessage,
-            messages.sumPlaying.replace("%(count)s", String(selectedSumFrames().length || sumSequence?.length || 0)),
-            true,
-        );
+        const startedAt = performance.now();
+        const warm = cutoutCache.has(url);
+        if (playing) {
+            setProcessMessage(
+                sumViewerMessage,
+                messages.sumPlaying.replace("%(count)s", String(selectedSumFrames().length || sumSequence?.length || 0)),
+                true,
+            );
+        }
         try {
             const blob = await fetchCutout(url);
             if (sumBlobUrl) {
@@ -1457,10 +1499,23 @@
             sumCutout.src = sumBlobUrl;
             sumCutout.classList.remove("d-none");
             sumViewerMessage?.classList.add("d-none");
+            stripProcessSpin(sumViewerMessage);
+            const elapsed = performance.now() - startedAt;
+            if (!warm) {
+                const firstSample = frameMs == null;
+                frameMs = firstSample ? elapsed : frameMs * 0.6 + elapsed * 0.4;
+                if (playing && firstSample) {
+                    armCountdown(cursor + 1, sequence().length);
+                }
+            }
             noteSumFrame(url);
             return true;
         } catch (error) {
             if (error?.name === "AbortError") {
+                stripProcessSpin(sumViewerMessage);
+                if (sumCutout && !sumCutout.classList.contains("d-none")) {
+                    sumViewerMessage?.classList.add("d-none");
+                }
                 return false;
             }
             setProcessMessage(
@@ -1485,7 +1540,8 @@
 
     function hideProgress() {
         stopCountdown();
-        document.getElementById("play-progress").classList.add("d-none");
+        document.getElementById("play-progress")?.classList.add("d-none");
+        setProcessMessage(document.getElementById("play-progress-label"), "", false);
     }
 
     function armCountdown(shown, total) {
@@ -1513,7 +1569,11 @@
         bar.style.width = `${pct}%`;
         bar.parentElement.setAttribute("aria-valuenow", String(pct));
         if (anchor.remainingMs == null) {
-            setProcessMessage(label, messages.measuring, true);
+            if (sumSequence?.length) {
+                setProcessMessage(label, "", false);
+            } else {
+                setProcessMessage(label, messages.measuring, true);
+            }
             return;
         }
         const left = Math.max(0, anchor.remainingMs - (performance.now() - anchor.at));
@@ -1559,6 +1619,14 @@
                 return;
             }
             cursor += 1;
+            if (cursor >= frames.length) {
+                if (sumSequence?.length) {
+                    cursor = Math.max(0, frames.length - 1);
+                    stop();
+                    return;
+                }
+                cursor = 0;
+            }
         }
     }
 
@@ -1680,7 +1748,7 @@
         }
         if (busy) {
             const icon = document.createElement("span");
-            icon.className = "spinner-border process-spin";
+            icon.className = "spinner-border spinner-border-sm process-spin";
             icon.setAttribute("aria-hidden", "true");
             element.append(icon);
         }
@@ -1688,11 +1756,15 @@
         element.classList.remove("d-none");
     }
 
-    function clearProcessSpin(element) {
+    function stripProcessSpin(element) {
         if (!element?.querySelector(".process-spin")) {
             return;
         }
-        element.textContent = element.textContent;
+        const text = element.textContent;
+        element.replaceChildren();
+        if (text) {
+            element.append(document.createTextNode(text));
+        }
     }
 
     function setSumStatus(text, busy = false) {
@@ -1745,6 +1817,7 @@
         }
         sumResultsReady = true;
         sumResultList.replaceChildren();
+        const detectors = sumDetectorsList();
         sumSequence.forEach((frame) => {
             const row = document.createElement("div");
             row.className = "list-group-item list-group-item-action obs-row";
@@ -1756,11 +1829,13 @@
             box.setAttribute("aria-label", messages.selectObservation);
             const button = document.createElement("button");
             button.type = "button";
-            button.className = "btn btn-link text-start text-reset text-decoration-none p-0 sum-open obs-cols";
+            button.className = "btn btn-link text-start text-reset text-decoration-none p-0 sum-open obs-cols obs-cols-det";
             appendObsCols(button, {
                 date: frame.date,
+                detector: frame.detectors?.length ? frame.detectors : detectors,
                 obsId: frame.obsId,
                 collection: frame.collection,
+                showDetector: true,
             });
             row.append(box, button);
             sumResultList.append(row);
@@ -1895,11 +1970,13 @@
         const row = document.createElement("div");
         row.className = "list-group-item list-group-item-action obs-row active";
         const body = document.createElement("div");
-        body.className = "obs-cols";
+        body.className = "obs-cols obs-cols-det";
         appendObsCols(body, {
             date: frame.date,
+            detector: frame.detectors,
             obsId: frame.obsId,
             collection: frame.collection,
+            showDetector: true,
         });
         const spacer = document.createElement("span");
         spacer.className = "obs-head-spacer";
@@ -2313,6 +2390,140 @@
             });
     }
 
+    const wiseToggle = document.getElementById("wise-toggle");
+    const wiseLayers = [
+        [document.getElementById("wise-mark"), cutout, document.getElementById("wise-caption")],
+        [document.getElementById("sum-wise-mark"), sumCutout, document.getElementById("sum-wise-caption")],
+        [document.getElementById("diff-wise-mark"), diffCutout, document.getElementById("diff-wise-caption")],
+    ];
+    window.spherexAllwiseVisible = wiseToggle ? wiseToggle.checked : true;
+
+    function sideArcsec() {
+        const fov = Number(viewer.dataset.fov);
+        const unit = viewer.dataset.unit || "arcsec";
+        if (unit === "deg") {
+            return fov * 3600;
+        }
+        if (unit === "arcmin") {
+            return fov * 60;
+        }
+        return fov;
+    }
+
+    function wiseSeparation(arcsec) {
+        if (arcsec >= 60) {
+            return messages.wiseArcmin.replace("%(value)s", (arcsec / 60).toFixed(1));
+        }
+        return messages.wiseArcsec.replace("%(value)s", String(Math.round(arcsec)));
+    }
+
+    function wiseFractions(mark) {
+        const ra0 = Number(mark.center_ra ?? viewer.dataset.ra);
+        const dec0 = Number(mark.center_dec ?? viewer.dataset.dec);
+        const side = sideArcsec();
+        if (!Number.isFinite(ra0) || !Number.isFinite(dec0) || !side) {
+            return null;
+        }
+        let deltaRa = mark.ra - ra0;
+        if (deltaRa > 180) {
+            deltaRa -= 360;
+        }
+        if (deltaRa < -180) {
+            deltaRa += 360;
+        }
+        const cosine = Math.cos(dec0 * Math.PI / 180);
+        const east = deltaRa * (Math.abs(cosine) < 0.05 ? 0.05 : cosine) * 3600;
+        const north = (mark.dec - dec0) * 3600;
+        return {x: 0.5 - east / side, y: 0.5 - north / side};
+    }
+
+    function imageBox(img, canvas) {
+        const frameW = canvas.clientWidth;
+        const frameH = canvas.clientHeight;
+        let natW = img.naturalWidth;
+        let natH = img.naturalHeight;
+        if (!natW || !natH) {
+            natW = 1;
+            natH = 1;
+        }
+        const scale = Math.min(frameW / natW, frameH / natH);
+        const drawnW = natW * scale;
+        const drawnH = natH * scale;
+        return {x: (frameW - drawnW) / 2, y: (frameH - drawnH) / 2, w: drawnW, h: drawnH};
+    }
+
+    function paintWiseMarks() {
+        const mark = window.spherexAllwise;
+        const visible = Boolean(window.spherexAllwiseVisible && mark?.found);
+        const fractions = visible ? wiseFractions(mark) : null;
+        const inside = Boolean(fractions && fractions.x >= 0 && fractions.x <= 1 && fractions.y >= 0 && fractions.y <= 1);
+        const caption = visible
+            ? messages.wiseLabel
+                .replace("%(year)s", String(mark.year))
+                .replace("%(separation)s", wiseSeparation(mark.separation_arcsec))
+            : "";
+        if (mark?.found) {
+            mark.label = caption;
+        }
+        const note = visible && !inside ? `${caption}. ${messages.wiseOutside}` : caption;
+        wiseLayers.forEach(([canvas, img, label]) => {
+            if (!canvas) {
+                return;
+            }
+            const showCross = visible && inside && img && !img.classList.contains("d-none");
+            canvas.classList.toggle("d-none", !showCross);
+            if (label) {
+                label.textContent = note;
+                label.classList.toggle("d-none", !note);
+            }
+            if (!showCross) {
+                return;
+            }
+            const ratio = window.devicePixelRatio || 1;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            canvas.width = Math.max(1, Math.round(width * ratio));
+            canvas.height = Math.max(1, Math.round(height * ratio));
+            const context = canvas.getContext("2d");
+            context.setTransform(ratio, 0, 0, ratio, 0, 0);
+            context.clearRect(0, 0, width, height);
+            const box = imageBox(img, canvas);
+            const x = box.x + fractions.x * box.w;
+            const y = box.y + fractions.y * box.h;
+            const arm = 9;
+            context.strokeStyle = "#ffcc33";
+            context.lineWidth = 2;
+            context.beginPath();
+            context.moveTo(x - arm, y);
+            context.lineTo(x + arm, y);
+            context.moveTo(x, y - arm);
+            context.lineTo(x, y + arm);
+            context.stroke();
+        });
+        window.dispatchEvent(new CustomEvent("spherex-allwise"));
+    }
+
+    wiseToggle?.addEventListener("change", () => {
+        window.spherexAllwiseVisible = wiseToggle.checked;
+        paintWiseMarks();
+    });
+    window.addEventListener("resize", paintWiseMarks);
+    [cutout, sumCutout, diffCutout].forEach((img) => {
+        img?.addEventListener("load", paintWiseMarks);
+    });
+    if (viewer.dataset.ra && viewer.dataset.allwisePattern) {
+        const catalogUrl = `${viewer.dataset.allwisePattern}?ra=${encodeURIComponent(viewer.dataset.ra)}&dec=${encodeURIComponent(viewer.dataset.dec)}`;
+        fetch(catalogUrl)
+            .then((response) => response.json())
+            .then((body) => {
+                window.spherexAllwise = body;
+                paintWiseMarks();
+            })
+            .catch(() => {
+                window.spherexAllwise = {found: false};
+            });
+    }
+
     updateCount();
     warnIfEmpty();
     }
@@ -2421,7 +2632,7 @@
     function syncQueryUrl() {
         const url = new URL(window.location.href);
         const params = url.searchParams;
-        for (const name of ["ra", "dec", "fov", "unit", "collection", "detector"]) {
+        for (const name of ["ra", "dec", "fov", "unit", "collection", "detector", "object"]) {
             const field = skyForm.elements.namedItem(name);
             if (!field) {
                 continue;
@@ -2459,6 +2670,31 @@
         }
         const cutoutOverlay = A.graphicOverlay({name: "cutout", color: "#00e5ff", lineWidth: 2});
         aladin.addOverlay(cutoutOverlay);
+        const wiseCatalog = A.catalog({
+            name: "AllWISE 2010",
+            color: "#ffcc33",
+            sourceSize: 16,
+            shape: "plus",
+            labelColumn: "label",
+            displayLabel: true,
+            labelColor: "#ffcc33",
+        });
+        aladin.addCatalog(wiseCatalog);
+
+        function syncWiseMarker() {
+            if (typeof wiseCatalog.removeAll === "function") {
+                wiseCatalog.removeAll();
+            }
+            const mark = window.spherexAllwise;
+            if (!mark?.found || window.spherexAllwiseVisible === false) {
+                wiseCatalog.hide?.();
+                return;
+            }
+            wiseCatalog.addSources([A.source(mark.ra, mark.dec, {label: mark.label || "AllWISE 2010"})]);
+            wiseCatalog.show?.();
+        }
+        window.addEventListener("spherex-allwise", syncWiseMarker);
+        syncWiseMarker();
 
         let activeSurvey = null;
         function ensureSurvey() {
@@ -2660,10 +2896,14 @@
 
     function setPreviewObject(name) {
         const label = document.getElementById("preview-object");
-        if (!label) {
-            return;
+        const field = document.getElementById("preview-object-value");
+        const clean = String(name || "").trim().slice(0, 80);
+        if (label) {
+            label.textContent = clean ? ` (obj. ${clean})` : "";
         }
-        label.textContent = name ? ` (obj. ${name})` : "";
+        if (field) {
+            field.value = clean;
+        }
     }
 
     function applyToForm(item) {

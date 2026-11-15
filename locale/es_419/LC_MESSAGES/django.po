@@ -411,6 +411,57 @@ msgstr "Sin observaciones nuevas"
 msgid "Showing saved observations. A cutout still needs the FITS file."
 msgstr "Mostrando observaciones guardadas. El recorte todavía necesita el archivo FITS."
 
+msgid "Information"
+msgstr "Información"
+
+msgid "This page"
+msgstr "Esta página"
+
+msgid "This tool lets you look at the same patch of sky in NASA SPHEREx images taken on different dates. Pick a position, choose how large the cutout should be, and search the SPHEREx releases published at IRSA."
+msgstr "Esta herramienta permite ver el mismo pedazo de cielo en imágenes SPHEREx de NASA tomadas en fechas distintas. Elige una posición, el tamaño del recorte y busca las publicaciones SPHEREx de IRSA."
+
+msgid "Play the observations of one detector in time order."
+msgstr "Reproduce en orden de tiempo las observaciones de un detector."
+
+msgid "Sum the detectors that belong to the same observation."
+msgstr "Suma los detectores que pertenecen a la misma observación."
+
+msgid "Subtract two epochs to see what changed."
+msgstr "Resta dos épocas para ver qué cambió."
+
+msgid "Objects you save stay in this browser."
+msgstr "Los objetos que guardas quedan en este navegador."
+
+msgid "The same search address can return the results as JSON. Add <code>format=json</code> to the URL, or send the header <code>Accept: application/json</code>. The response looks in the local database and then waits for IRSA. If IRSA answers, those observations are returned. If IRSA fails, the saved observations are returned."
+msgstr "La misma dirección de búsqueda puede devolver los resultados en JSON. Agrega <code>format=json</code> a la URL, o envía la cabecera <code>Accept: application/json</code>. La respuesta mira la base local y después espera a IRSA. Si IRSA responde, se devuelven esas observaciones. Si IRSA falla, se devuelven las observaciones guardadas."
+
+msgid "Example for Barnard's Star:"
+msgstr "Ejemplo con la estrella de Barnard:"
+
+msgid "NASA Space Apps Challenge"
+msgstr "NASA Space Apps Challenge"
+
+msgid "The NASA International Space Apps Challenge is a yearly hackathon. In 2026 the challenge “Planet X and SPHEREx” asks teams to use SPHEREx infrared images to look for objects that move or change brightness from one epoch to the next."
+msgstr "El NASA International Space Apps Challenge es un hackatón anual. En 2026 el desafío “Planet X and SPHEREx” pide usar imágenes infrarrojas de SPHEREx para buscar objetos que se mueven o cambian de brillo de una época a la siguiente."
+
+msgid "Planet X and SPHEREx challenge"
+msgstr "Desafío Planet X and SPHEREx"
+
+msgid "Space Apps Challenge"
+msgstr "Space Apps Challenge"
+
+msgid "SPHEREx (Spectro-Photometer for the History of the Universe, Epoch of Reionization, and Ices Explorer) is a NASA mission led by the Jet Propulsion Laboratory and Caltech. It surveys the whole sky in near-infrared light and records a spectrum at every point. The images used here come from the public archive at IRSA."
+msgstr "SPHEREx (Spectro-Photometer for the History of the Universe, Epoch of Reionization, and Ices Explorer) es una misión de NASA liderada por el Jet Propulsion Laboratory y Caltech. Recorre todo el cielo en el infrarrojo cercano y registra un espectro en cada punto. Las imágenes que usa esta página salen del archivo público de IRSA."
+
+msgid "SPHEREx links"
+msgstr "Enlaces de SPHEREx"
+
+msgid "IRSA SPHEREx Data Explorer"
+msgstr "Explorador de datos SPHEREx de IRSA"
+
+msgid "IRSA SPHEREx data access"
+msgstr "Acceso a datos SPHEREx en IRSA"
+
 msgid "%(count)s saved observation"
 msgid_plural "%(count)s saved observations"
 msgstr[0] "%(count)s observación guardada"
@@ -420,3 +471,18 @@ msgid "%(count)s new observation"
 msgid_plural "%(count)s new observations"
 msgstr[0] "%(count)s observación nueva"
 msgstr[1] "%(count)s observaciones nuevas"
+
+msgid "AllWISE %(year)s · %(separation)s"
+msgstr "AllWISE %(year)s · %(separation)s"
+
+msgid "The 2010 position falls outside this cutout."
+msgstr "La posición de 2010 queda fuera de este recorte."
+
+msgid "%(value)s arcmin"
+msgstr "%(value)s arcmin"
+
+msgid "%(value)s arcsec"
+msgstr "%(value)s segundos de arco"
+
+msgid "AllWISE 2010"
+msgstr "AllWISE 2010"

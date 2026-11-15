@@ -44,7 +44,10 @@ FALLBACK_COLLECTIONS = (
 SEARCH_RADIUS = 1 * u.arcsec
 FOOTPRINT_HALF_DEG = 2.0
 MAX_REGION_RADIUS_DEG = 10.0
+ALLWISE_CATALOG = "allwise_p3as_psd"
+ALLWISE_RADIUS = 4 * u.arcmin
 _COLLECTION_CACHE = {"expires": 0.0, "names": []}
+_ALLWISE_CACHE = {}
 # Wikipedia and Aladin often paste a minus that is not the ASCII hyphen.
 _ANGLE_DASHES = str.maketrans({
     "\u2212": "-",
@@ -111,6 +114,59 @@ def fov_to_arcsec(value, unit):
     if arcsec > 3600:
         raise SearchError(_("In this version the maximum cutout is 1 degree."))
     return arcsec
+
+
+def allwise_anchor(ra, dec):
+    """Brightest AllWISE source within 4 arcmin, at its catalog epoch."""
+    coord = parse_coordinates(ra, dec)
+    key = (round(float(coord.ra.deg), 4), round(float(coord.dec.deg), 4))
+    now = time.monotonic()
+    cached = _ALLWISE_CACHE.get(key)
+    if cached and cached[0] > now:
+        return dict(cached[1])
+    try:
+        table = Irsa.query_region(
+            coordinates=coord,
+            catalog=ALLWISE_CATALOG,
+            spatial="Cone",
+            radius=ALLWISE_RADIUS,
+            columns="ra,dec,w1mpro,w1mjdmean",
+        )
+    except Exception:
+        logger.exception("AllWISE catalog query failed")
+        return {"found": False}
+    payload = _brightest_allwise(table, coord)
+    payload["center_ra"] = float(coord.ra.deg)
+    payload["center_dec"] = float(coord.dec.deg)
+    _ALLWISE_CACHE[key] = (now + 600, payload)
+    return dict(payload)
+
+
+def _brightest_allwise(table, coord):
+    if table is None or len(table) == 0 or "w1mpro" not in {name.lower() for name in table.colnames}:
+        return {"found": False}
+    lookup = {name.lower(): name for name in table.colnames}
+    magnitudes = np.ma.filled(np.ma.asarray(table[lookup["w1mpro"]], dtype=float), np.nan)
+    if not np.any(np.isfinite(magnitudes)):
+        return {"found": False}
+    row = table[int(np.nanargmin(magnitudes))]
+    source = SkyCoord(float(row[lookup["ra"]]), float(row[lookup["dec"]]), unit="deg", frame="icrs")
+    year = 2010
+    mjd_name = lookup.get("w1mjdmean")
+    if mjd_name is not None:
+        try:
+            mjd = float(row[mjd_name])
+        except (TypeError, ValueError):
+            mjd = np.nan
+        if np.isfinite(mjd):
+            year = int(round(float(Time(mjd, format="mjd").decimalyear)))
+    return {
+        "found": True,
+        "ra": float(source.ra.deg),
+        "dec": float(source.dec.deg),
+        "year": year,
+        "separation_arcsec": float(coord.separation(source).arcsec),
+    }
 
 
 def wavelength_label(em_min, em_max):

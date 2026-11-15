@@ -293,6 +293,97 @@ class SearchStoreTests(TestCase):
         self.assertEqual(images[-1].obs_id, f"obs-{total - 1}")
 
 
+class IndexJsonTests(SimpleTestCase):
+    def _get(self, params, accept="application/json"):
+        return RequestFactory().get("/", params, HTTP_ACCEPT=accept)
+
+    @patch("search.views._example_objects", return_value=[])
+    @patch("search.services.list_spherex_collections", return_value=["spherex_dr1"])
+    @patch("search.services.search_collections", return_value=([], 0))
+    @patch("search.services.local_images_covering", return_value=[])
+    def test_browser_request_stays_html(self, _local, _search, _collections, _examples):
+        response = views.index(self._get({"ra": "10", "dec": "0"}, accept="text/html,application/xhtml+xml"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/html", response["Content-Type"])
+
+    @patch("search.services.list_spherex_collections", return_value=["spherex_dr1"])
+    @patch("search.services.search_collections")
+    @patch("search.services.local_images_covering")
+    def test_accept_json_returns_irsa_after_the_local_lookup(self, local, search, _collections):
+        image = SimpleNamespace(
+            pk=7,
+            obs_id="obs",
+            detector=2,
+            observation_date=timezone.now(),
+            em_min=1.1e-6,
+            em_max=1.6e-6,
+            collection="spherex_dr1",
+        )
+        local.return_value = []
+        search.return_value = ([image], 1)
+        response = views.index(self._get({
+            "ra": "10",
+            "dec": "0",
+            "fov": "60",
+            "unit": "arcsec",
+            "collection": "spherex_dr1",
+        }))
+        body = json.loads(response.content)
+        self.assertEqual(response["Content-Type"], "application/json")
+        self.assertEqual(body["status"], "ok")
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["results"][0]["obs_id"], "obs")
+        self.assertEqual(body["results"][0]["detector"], 2)
+        self.assertIn("/cutout/7/", body["results"][0]["cutout"])
+        search.assert_called_once()
+
+    @patch("search.services.list_spherex_collections", return_value=["spherex_dr1"])
+    @patch("search.services.search_collections", side_effect=services.SearchError("down"))
+    @patch("search.services.local_images_covering")
+    def test_json_keeps_local_results_when_irsa_fails(self, local, _search, _collections):
+        image = SimpleNamespace(
+            pk=3,
+            obs_id="saved",
+            detector=1,
+            observation_date=timezone.now(),
+            em_min=1.1e-6,
+            em_max=1.6e-6,
+            collection="spherex_dr1",
+        )
+        local.return_value = [image]
+        response = views.index(self._get({
+            "ra": "10",
+            "dec": "0",
+            "fov": "60",
+            "unit": "arcsec",
+            "format": "json",
+        }))
+        body = json.loads(response.content)
+        self.assertEqual(body["status"], "ok")
+        self.assertEqual(body["results"][0]["obs_id"], "saved")
+        self.assertEqual(body["trail"]["irsa_state"], "failed")
+
+    @patch("search.services.list_spherex_collections", return_value=["spherex_dr1"])
+    @patch("search.services.search_collections", return_value=([], 0))
+    @patch("search.services.local_images_covering", return_value=[])
+    def test_format_query_returns_json_even_for_a_browser_accept(self, _local, _search, _collections):
+        response = views.index(self._get(
+            {"ra": "10", "dec": "0", "fov": "60", "unit": "arcsec", "format": "json"},
+            accept="text/html",
+        ))
+        body = json.loads(response.content)
+        self.assertEqual(body["status"], "empty")
+        self.assertEqual(body["results"], [])
+
+    @patch("search.services.list_spherex_collections", return_value=["spherex_dr1"])
+    def test_invalid_coordinates_are_json_400(self, _collections):
+        response = views.index(self._get({"ra": "not-a-coordinate", "dec": "0"}))
+        body = json.loads(response.content)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(body["status"], "invalid")
+        self.assertEqual(body["results"], [])
+
+
 class RefreshViewTests(TestCase):
     def setUp(self):
         self.factory = RequestFactory()
@@ -564,3 +655,75 @@ class AdvancedSearchTests(SimpleTestCase):
             images, new_count = services.search_collections("10", "0", ["spherex_dr1", "spherex_qr3"])
         self.assertEqual([item.obs_id for item in images], ["2025", "2026"])
         self.assertEqual(new_count, 1)
+
+
+class AllwiseAnchorTests(SimpleTestCase):
+    def setUp(self):
+        services._ALLWISE_CACHE.clear()
+
+    def test_the_brightest_source_is_kept_and_cached(self):
+        table = Table({
+            "ra": [10.0, 10.02],
+            "dec": [0.0, 0.01],
+            "w1mpro": [8.0, 4.5],
+            "w1mjdmean": [55197.0, 55200.0],
+        })
+        with patch("search.services.Irsa.query_region", return_value=table) as query:
+            first = services.allwise_anchor(10.0, 0.0)
+            second = services.allwise_anchor(10.0, 0.0)
+        self.assertEqual(query.call_count, 1)
+        self.assertTrue(first["found"])
+        self.assertAlmostEqual(first["ra"], 10.02)
+        self.assertAlmostEqual(first["dec"], 0.01)
+        self.assertEqual(first["year"], 2010)
+        self.assertGreater(first["separation_arcsec"], 60)
+        self.assertEqual(second, first)
+
+    def test_an_empty_cone_is_not_a_match(self):
+        with patch("search.services.Irsa.query_region", return_value=Table()):
+            result = services.allwise_anchor(1.0, 2.0)
+        self.assertFalse(result["found"])
+
+    def test_a_failed_query_does_not_break_the_page(self):
+        with patch("search.services.Irsa.query_region", side_effect=RuntimeError("down")):
+            result = services.allwise_anchor(1.0, 2.0)
+        self.assertEqual(result, {"found": False})
+        self.assertEqual(services._ALLWISE_CACHE, {})
+
+    def test_sexagesimal_coordinates_reach_the_catalog(self):
+        table = Table({
+            "ra": [269.45],
+            "dec": [4.74],
+            "w1mpro": [4.5],
+            "w1mjdmean": [55200.0],
+        })
+        with patch("search.services.Irsa.query_region", return_value=table) as query:
+            result = services.allwise_anchor("17h57m47.67s", "04d44m16.73s")
+        called = query.call_args.kwargs["coordinates"]
+        self.assertAlmostEqual(called.ra.deg, 269.448625, places=3)
+        self.assertAlmostEqual(called.dec.deg, 4.73798, places=3)
+        self.assertTrue(result["found"])
+        self.assertAlmostEqual(result["center_ra"], called.ra.deg)
+
+
+class AllwiseViewTests(SimpleTestCase):
+    def test_bad_coordinates_return_not_found(self):
+        request = RequestFactory().get("/catalog/allwise/", {"ra": "nope", "dec": "1"})
+        payload = json.loads(views.allwise_catalog(request).content)
+        self.assertFalse(payload["found"])
+
+    def test_sexagesimal_coordinates_are_accepted(self):
+        request = RequestFactory().get("/catalog/allwise/", {"ra": "17h57m47.67s", "dec": "04d44m16.73s"})
+        anchor = {"found": True, "ra": 269.45, "dec": 4.74, "year": 2010, "separation_arcsec": 150.0, "center_ra": 269.4486, "center_dec": 4.73798}
+        with patch("search.views.services.allwise_anchor", return_value=anchor) as query:
+            payload = json.loads(views.allwise_catalog(request).content)
+        query.assert_called_once_with("17h57m47.67s", "04d44m16.73s")
+        self.assertTrue(payload["found"])
+
+    def test_the_view_returns_the_anchor(self):
+        anchor = {"found": True, "ra": 10.02, "dec": 0.01, "year": 2010, "separation_arcsec": 80.5}
+        request = RequestFactory().get("/catalog/allwise/", {"ra": "10", "dec": "0"})
+        with patch("search.views.services.allwise_anchor", return_value=anchor):
+            payload = json.loads(views.allwise_catalog(request).content)
+        self.assertEqual(payload["year"], 2010)
+        self.assertAlmostEqual(payload["ra"], 10.02)

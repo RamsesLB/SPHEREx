@@ -1,0 +1,52 @@
+{% extends "search/layout.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Information" %} · SPHEREx{% endblock %}
+
+{% block extra_head %}
+<style>
+    .info-page {
+        max-width: 44rem;
+        margin: 0 auto;
+        padding: 1.5rem 1.25rem 3rem;
+    }
+    .info-page h1 { font-size: 1.6rem; }
+    .info-page h2 { font-size: 1.15rem; margin-top: 1.75rem; }
+    .info-page a { word-break: break-word; }
+</style>
+{% endblock %}
+
+{% block body %}
+<main class="info-page">
+    <h1>{% trans "Information" %}</h1>
+
+    <h2>{% trans "This page" %}</h2>
+    <p>{% blocktrans %}This tool lets you look at the same patch of sky in NASA SPHEREx images taken on different dates. Pick a position, choose how large the cutout should be, and search the SPHEREx releases published at IRSA.{% endblocktrans %}</p>
+    <ul>
+        <li>{% trans "Play the observations of one detector in time order." %}</li>
+        <li>{% trans "Sum the detectors that belong to the same observation." %}</li>
+        <li>{% trans "Subtract two epochs to see what changed." %}</li>
+        <li>{% trans "Objects you save stay in this browser." %}</li>
+    </ul>
+    <p>{% blocktrans %}The same search address can return the results as JSON. Add <code>format=json</code> to the URL, or send the header <code>Accept: application/json</code>. The response looks in the local database and then waits for IRSA. If IRSA answers, those observations are returned. If IRSA fails, the saved observations are returned.{% endblocktrans %}</p>
+    <p>{% trans "Example for Barnard's Star:" %}</p>
+    <p><a href="{% url 'index' %}?ra=17h57m47.16s&amp;dec=%2B04d45m55.2s&amp;fov=300&amp;unit=arcsec&amp;object=Barnard%27s%20Star&amp;format=json"><code>/?ra=17h57m47.16s&amp;dec=+04d45m55.2s&amp;fov=300&amp;unit=arcsec&amp;object=Barnard's Star&amp;format=json</code></a></p>
+
+    <h2>{% trans "NASA Space Apps Challenge" %}</h2>
+    <p>{% blocktrans %}The NASA International Space Apps Challenge is a yearly hackathon. In 2026 the challenge “Planet X and SPHEREx” asks teams to use SPHEREx infrared images to look for objects that move or change brightness from one epoch to the next.{% endblocktrans %}</p>
+    <p><a href="https://www.spaceappschallenge.org/2026/challenges/planet-x-and-spherex/">{% trans "Planet X and SPHEREx challenge" %}</a></p>
+    <p><a href="https://www.spaceappschallenge.org/">{% trans "Space Apps Challenge" %}</a></p>
+
+    <h2>SPHEREx</h2>
+    <p>{% blocktrans %}SPHEREx (Spectro-Photometer for the History of the Universe, Epoch of Reionization, and Ices Explorer) is a NASA mission led by the Jet Propulsion Laboratory and Caltech. It surveys the whole sky in near-infrared light and records a spectrum at every point. The images used here come from the public archive at IRSA.{% endblocktrans %}</p>
+
+    <h2>{% trans "SPHEREx links" %}</h2>
+    <ul>
+        <li><a href="https://science.nasa.gov/mission/spherex/">NASA — SPHEREx</a></li>
+        <li><a href="https://www.jpl.nasa.gov/missions/spherex/">JPL — SPHEREx</a></li>
+        <li><a href="https://spherex.caltech.edu/">Caltech — SPHEREx</a></li>
+        <li><a href="https://irsa.ipac.caltech.edu/applications/spherex/">{% trans "IRSA SPHEREx Data Explorer" %}</a></li>
+        <li><a href="https://irsa.ipac.caltech.edu/spherex-archive-documentation/spherex-data-access/">{% trans "IRSA SPHEREx data access" %}</a></li>
+    </ul>
+</main>
+{% endblock %}

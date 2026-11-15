@@ -27,13 +27,18 @@ def index(request):
     refresh_url = ""
     if has_query:
         searched = True
-        if form.is_valid():
+        if form.is_valid() and _wants_json(request):
+            frames, error, info, trail = _search_json_sources(form)
+        elif form.is_valid():
             frames, error, info, trail, refresh_url = _search_page(form)
         else:
             error = _("Check the coordinates and the cutout size.")
 
     target_ra, target_dec = _map_target(form)
     query = _submitted_query(form) if searched and form.is_valid() else None
+
+    if _wants_json(request):
+        return _search_json(request, form, frames, error, info, trail, searched)
 
     return render(request, "search/index.html", {
         "form": form,
@@ -108,6 +113,14 @@ def refresh(request):
         "irsa_text": text,
         "info": _result_info(images, new_count),
     })
+
+
+def allwise_catalog(request):
+    try:
+        payload = services.allwise_anchor(request.GET.get("ra", ""), request.GET.get("dec", ""))
+    except services.SearchError:
+        return JsonResponse({"found": False})
+    return JsonResponse(payload)
 
 
 def cutout(request, pk):
@@ -252,8 +265,121 @@ def _png_response(path, label):
     return HttpResponse(payload, content_type="image/png")
 
 
+def information(request):
+    return render(request, "search/information.html")
+
+
 def health_check(request):
     return JsonResponse({"status": "ok", "app": "SPHEREx NASA Hackaton live"})
+
+
+def _wants_json(request):
+    """Same search URL, JSON when a client asks for it instead of the page."""
+    if (request.GET.get("format") or "").strip().lower() == "json":
+        return True
+    accept = request.headers.get("Accept", "")
+    if "application/json" not in accept:
+        return False
+    html_at = accept.find("text/html")
+    json_at = accept.find("application/json")
+    return html_at == -1 or json_at < html_at
+
+
+def _search_json(request, form, frames, error, info, trail, searched):
+    if searched and not form.is_valid():
+        return JsonResponse({
+            "status": "invalid",
+            "query": None,
+            "count": 0,
+            "results": [],
+            "error": error,
+            "info": None,
+            "trail": None,
+        }, status=400)
+    query = _submitted_query(form) if searched and form.is_valid() else None
+    if query is not None:
+        object_name = (request.GET.get("object") or "").strip()
+        if object_name:
+            query["object"] = object_name[:80]
+        query["collections"] = list(form.cleaned_data.get("collections") or [])
+    if not searched:
+        status = "idle"
+    elif error:
+        status = "error"
+    elif frames:
+        status = "ok"
+    else:
+        status = "empty"
+    results = [_result_payload(request, frame, query) for frame in frames]
+    return JsonResponse({
+        "status": status,
+        "query": query,
+        "count": len(results),
+        "results": results,
+        "error": error,
+        "info": info or None,
+        "trail": trail,
+    })
+
+
+def _result_payload(request, frame, query):
+    item = dict(frame)
+    if query:
+        params = urlencode({
+            "ra": query["ra"],
+            "dec": query["dec"],
+            "fov": query["fov"],
+            "unit": query["unit"],
+        })
+        item["cutout"] = request.build_absolute_uri(
+            f"{reverse('cutout', args=[frame['id']])}?{params}"
+        )
+    return item
+
+
+def _search_json_sources(form):
+    """Local first, then IRSA. An IRSA failure keeps the saved rows."""
+    data = form.cleaned_data
+    try:
+        coord = services.parse_coordinates(data["ra"], data["dec"])
+        local = list(services.local_images_covering(coord, data["collections"]))
+    except services.SearchError as exc:
+        local_state, local_text = _local_trail([])
+        irsa_state, irsa_text = _irsa_trail("unavailable_empty", 0)
+        return [], str(exc), None, _trail(local_state, local_text, irsa_state, irsa_text)
+    local_state, local_text = _local_trail(local)
+    try:
+        images, new_count = services.search_collections(data["ra"], data["dec"], data["collections"])
+    except services.SearchError as exc:
+        return _json_local_fallback(local, local_state, local_text, str(exc))
+    except Exception:
+        logger.exception("Unexpected IRSA search error")
+        return _json_local_fallback(
+            local,
+            local_state,
+            local_text,
+            _("IRSA could not be queried. Try again in a few seconds."),
+        )
+    frames = [_frame_payload(image) for image in images]
+    if not frames:
+        irsa_state, irsa_text = _irsa_trail("empty", 0)
+        info = _("IRSA returned no SPHEREx images for this position in %(collection)s.") % {
+            "collection": _collection_phrase(data["collections"]),
+        }
+    else:
+        irsa_state, irsa_text = _irsa_trail("ready", new_count, images)
+        info = _result_info(images, new_count)
+    return frames, None, info, _trail(local_state, local_text, irsa_state, irsa_text)
+
+
+def _json_local_fallback(local, local_state, local_text, irsa_error):
+    irsa_state, irsa_text = _irsa_trail("unavailable" if local else "unavailable_empty", 0)
+    trail = _trail(local_state, local_text, irsa_state, irsa_text)
+    if not local:
+        return [], irsa_error, None, trail
+    frames = [_frame_payload(image) for image in local]
+    info = _("Showing saved observations. A cutout still needs the FITS file.")
+    return frames, None, info, trail
 
 
 def _search_page(form):
@@ -471,4 +597,8 @@ def _js_messages():
         "diffNone": _("No detector has two observations to subtract."),
         "chooseDiff": _("Choose a subtracted image."),
         "confirm": _("Confirm"),
+        "wiseLabel": _("AllWISE %(year)s · %(separation)s"),
+        "wiseOutside": _("The 2010 position falls outside this cutout."),
+        "wiseArcmin": _("%(value)s arcmin"),
+        "wiseArcsec": _("%(value)s arcsec"),
     }
