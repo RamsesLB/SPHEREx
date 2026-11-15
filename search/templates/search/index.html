@@ -1029,18 +1029,17 @@
         if (!current && item) {
             current = [item];
         }
-        if (!current) {
-            current = sequence()[cursor]?.items || [];
+        if (sumIndex == null) {
+            if (!current) {
+                current = sequence()[cursor]?.items || [];
+            }
+            [...list.querySelectorAll("[data-id]")].forEach((entry) => entry.classList.remove("active"));
+            current.forEach((entry) => entry.classList.add("active"));
         }
-        [...list.querySelectorAll("[data-id]")].forEach((entry) => entry.classList.remove("active"));
-        current.forEach((entry) => entry.classList.add("active"));
-        let activeSum = sumIndex;
-        if (activeSum == null && sumSequence?.length) {
-            activeSum = sequence()[cursor]?.sumIndex;
-        }
-        if (sumResultList) {
+        const activeSum = sumIndex;
+        if (sumResultList && activeSum != null) {
             [...sumResultList.querySelectorAll("[data-sum-index]")].forEach((row) => {
-                row.classList.toggle("active", activeSum != null && Number(row.dataset.sumIndex) === activeSum);
+                row.classList.toggle("active", Number(row.dataset.sumIndex) === activeSum);
             });
         }
         if (!follow) {
@@ -1116,9 +1115,6 @@
     }
 
     function sequence() {
-        if (sumSequence?.length) {
-            return selectedSumFrames();
-        }
         return selectedFrames().map((item) => ({items: [item], url: cutoutUrl(item.dataset.id)}));
     }
 
@@ -1164,7 +1160,7 @@
         }
     }
 
-    function fetchCutout(url) {
+    function fetchCutout(url, lane = "obs") {
         if (cutoutCache.has(url)) {
             return Promise.resolve(cutoutCache.get(url));
         }
@@ -1185,19 +1181,26 @@
             rememberBlob(url, blob);
             return blob;
         })().finally(() => {
-            inflight.delete(url);
-            if (playing) {
+            const current = inflight.get(url);
+            if (current?.promise === promise) {
+                inflight.delete(url);
+            }
+            if (playing && lane === "obs") {
                 schedulePrefetch();
             }
         });
-        inflight.set(url, {controller, promise});
+        inflight.set(url, {controller, promise, lane});
         return promise;
     }
 
-    function abortInflight() {
-        const jobs = [...inflight.values()];
-        inflight.clear();
-        jobs.forEach((job) => job.controller.abort());
+    function abortLane(lane) {
+        for (const [url, job] of [...inflight.entries()]) {
+            if (job.lane !== lane) {
+                continue;
+            }
+            inflight.delete(url);
+            job.controller.abort();
+        }
     }
 
     function schedulePrefetch() {
@@ -1217,15 +1220,17 @@
             wanted.push(url);
         }
         for (const [url, job] of inflight) {
-            if (!wanted.includes(url)) {
+            if (job.lane === "obs" && !wanted.includes(url)) {
+                inflight.delete(url);
                 job.controller.abort();
             }
         }
         wanted.forEach((url) => {
-            if (inflight.has(url) || inflight.size >= prefetchLimit) {
+            const obsInflight = [...inflight.values()].filter((job) => job.lane === "obs").length;
+            if (inflight.has(url) || obsInflight >= prefetchLimit) {
                 return;
             }
-            fetchCutout(url).catch(() => {});
+            fetchCutout(url, "obs").catch(() => {});
         });
     }
 
@@ -1282,9 +1287,6 @@
     }
 
     function emptySequenceMessage() {
-        if (sumSequence) {
-            return sumResultsReady ? messages.selectToPlay : messages.sumNone;
-        }
         return visibleFrames().length ? messages.selectToPlay : messages.noDetector;
     }
 
@@ -1316,16 +1318,10 @@
         if (playing) {
             schedulePrefetch();
         } else {
-            abortInflight();
+            abortLane("obs");
         }
         const label = `${cursor + 1} / ${frames.length}`;
-        const wave = wavelengthText(frame.items);
-        if (sumSequence?.length) {
-            setWavelength(wave, sumWaveLabel);
-            await displaySumUrl(frame.url, label);
-            return;
-        }
-        setWavelength(wave);
+        setWavelength(wavelengthText(frame.items));
         await displayUrl(frame.url, label);
     }
 
@@ -1336,7 +1332,7 @@
             cursor = index;
         }
         highlight({item});
-        abortInflight();
+        abortLane("obs");
         const label = index >= 0 ? `${index + 1} / ${frames.length}` : "";
         setWavelength(item.dataset.wavelength || "");
         displayUrl(cutoutUrl(item.dataset.id), label);
@@ -1401,8 +1397,7 @@
 
     function stop() {
         playing = false;
-        stopSumLoop();
-        abortInflight();
+        abortLane("obs");
         setLoading(false);
         if (timer) {
             clearTimeout(timer);
@@ -1422,26 +1417,6 @@
     function settleBusyMessages() {
         const progressLabel = document.getElementById("play-progress-label");
         setProcessMessage(progressLabel, "", false);
-        if (sumSequence?.length && sumResultsReady) {
-            const done = stackOp === "diff"
-                ? messages.diffCount.replace("%(count)s", String(sumSequence.length))
-                : messages.sumCount.replace("%(count)s", String(sumSequence.length));
-            setSumStatus(done, false);
-        } else {
-            stripProcessSpin(document.getElementById("sum-status"));
-        }
-        if (sumCutout && !sumCutout.classList.contains("d-none")) {
-            sumViewerMessage?.classList.add("d-none");
-            stripProcessSpin(sumViewerMessage);
-        } else {
-            stripProcessSpin(sumViewerMessage);
-        }
-        if (diffCutout && !diffCutout.classList.contains("d-none")) {
-            diffViewerMessage?.classList.add("d-none");
-            stripProcessSpin(diffViewerMessage);
-        } else {
-            stripProcessSpin(diffViewerMessage);
-        }
     }
 
     function stopCountdown() {
@@ -1478,6 +1453,19 @@
         showFrame(cursor + delta, {follow: true});
     }
 
+    function stepSumFrame(delta) {
+        stopSumLoop();
+        const frames = selectedSumFrames();
+        if (!frames.length) {
+            return;
+        }
+        sumCursor = (sumCursor + delta + frames.length) % frames.length;
+        const frame = frames[sumCursor];
+        highlight({follow: true, items: frame.items, sumIndex: frame.sumIndex});
+        setWavelength(wavelengthText(frame.items), sumWaveLabel);
+        displaySumUrl(frame.url, `${sumCursor + 1} / ${frames.length}`);
+    }
+
     function wavelengthText(items) {
         const labels = [];
         (items || []).forEach((row) => {
@@ -1501,23 +1489,46 @@
 
     let sumLooping = false;
     let sumLoopToken = 0;
+    let sumCursor = 0;
+    let sumTimer = null;
+    let sumReleaseWait = null;
+
+    function waitSum(ms) {
+        return new Promise((resolve) => {
+            sumReleaseWait = resolve;
+            sumTimer = setTimeout(() => {
+                sumTimer = null;
+                sumReleaseWait = null;
+                resolve();
+            }, ms);
+        });
+    }
 
     function stopSumLoop() {
         const wasLooping = sumLooping;
         sumLooping = false;
         sumLoopToken += 1;
         setSumPlayIcon(false);
-        if (!wasLooping || playing) {
+        abortLane("sum");
+        if (sumTimer) {
+            clearTimeout(sumTimer);
+            sumTimer = null;
+        }
+        if (sumReleaseWait) {
+            const release = sumReleaseWait;
+            sumReleaseWait = null;
+            release();
+        }
+        if (!wasLooping || !sumSequence?.length || !sumResultsReady) {
             return;
         }
-        if (timer) {
-            clearTimeout(timer);
-            timer = null;
-        }
-        if (releaseWait) {
-            const release = releaseWait;
-            releaseWait = null;
-            release();
+        const done = stackOp === "diff"
+            ? messages.diffCount.replace("%(count)s", String(sumSequence.length))
+            : messages.sumCount.replace("%(count)s", String(sumSequence.length));
+        setSumStatus(done, false);
+        if (sumCutout && !sumCutout.classList.contains("d-none")) {
+            sumViewerMessage?.classList.add("d-none");
+            stripProcessSpin(sumViewerMessage);
         }
     }
 
@@ -1552,11 +1563,11 @@
         if (!frames.length) {
             return;
         }
-        stop();
         sumLooping = true;
         const token = ++sumLoopToken;
         setSumPlayIcon(true);
-        let index = cursor >= 0 && cursor < frames.length ? cursor : 0;
+        setSumStatus(messages.sumPlaying.replace("%(count)s", String(frames.length)), true);
+        let index = sumCursor >= 0 && sumCursor < frames.length ? sumCursor : 0;
         while (sumLooping && token === sumLoopToken) {
             const current = selectedSumFrames();
             if (!current.length) {
@@ -1567,14 +1578,14 @@
                 index = 0;
             }
             const frame = current[index];
-            cursor = index;
+            sumCursor = index;
             highlight({follow: true, items: frame.items, sumIndex: frame.sumIndex});
             setWavelength(wavelengthText(frame.items), sumWaveLabel);
             await showCachedSum(frame.url, `${index + 1} / ${current.length}`);
             if (!sumLooping || token !== sumLoopToken) {
                 return;
             }
-            await wait(800);
+            await waitSum(800);
             if (!sumLooping || token !== sumLoopToken) {
                 return;
             }
@@ -1586,9 +1597,7 @@
         if (sumFrameLabel) {
             sumFrameLabel.textContent = label || "";
         }
-        const startedAt = performance.now();
-        const warm = cutoutCache.has(url);
-        if (playing) {
+        if (sumLooping) {
             setProcessMessage(
                 sumViewerMessage,
                 messages.sumPlaying.replace("%(count)s", String(selectedSumFrames().length || sumSequence?.length || 0)),
@@ -1596,7 +1605,7 @@
             );
         }
         try {
-            const blob = await fetchCutout(url);
+            const blob = await fetchCutout(url, "sum");
             if (sumBlobUrl) {
                 URL.revokeObjectURL(sumBlobUrl);
             }
@@ -1605,14 +1614,6 @@
             sumCutout.classList.remove("d-none");
             sumViewerMessage?.classList.add("d-none");
             stripProcessSpin(sumViewerMessage);
-            const elapsed = performance.now() - startedAt;
-            if (!warm) {
-                const firstSample = frameMs == null;
-                frameMs = firstSample ? elapsed : frameMs * 0.6 + elapsed * 0.4;
-                if (playing && firstSample) {
-                    armCountdown(cursor + 1, sequence().length);
-                }
-            }
             noteSumFrame(url);
             return true;
         } catch (error) {
@@ -1674,11 +1675,7 @@
         bar.style.width = `${pct}%`;
         bar.parentElement.setAttribute("aria-valuenow", String(pct));
         if (anchor.remainingMs == null) {
-            if (sumSequence?.length) {
-                setProcessMessage(label, "", false);
-            } else {
-                setProcessMessage(label, messages.measuring, true);
-            }
+            setProcessMessage(label, messages.measuring, true);
             return;
         }
         const left = Math.max(0, anchor.remainingMs - (performance.now() - anchor.at));
@@ -1701,10 +1698,6 @@
 
     async function playLoop() {
         while (playing) {
-            if (sumSequence?.length && !sumPlayStarted) {
-                stop();
-                return;
-            }
             const frames = sequence();
             if (!frames.length) {
                 stop();
@@ -1725,15 +1718,6 @@
             }
             cursor += 1;
             if (cursor >= frames.length) {
-                if (sumSequence?.length) {
-                    cursor = Math.max(0, frames.length - 1);
-                    const finishedSum = stackOp === "sum";
-                    stop();
-                    if (finishedSum) {
-                        paintStackButton("sum-open", false);
-                    }
-                    return;
-                }
                 cursor = 0;
             }
         }
@@ -1744,9 +1728,6 @@
             stop();
             return;
         }
-        if (sumLooping) {
-            stopSumLoop();
-        }
         const frames = sequence();
         if (!frames.length) {
             message.textContent = emptySequenceMessage();
@@ -1756,13 +1737,7 @@
         }
         playing = true;
         setPlayIcon(true);
-        paintStackButton("diff-open", false);
         frameMs = null;
-        if (sumSequence?.length) {
-            sumPlayStarted = true;
-            revealSumResults();
-            setSumStatus(messages.sumPlaying.replace("%(count)s", String(selectedSumFrames().length || sumSequence.length)), true);
-        }
         armCountdown(0, frames.length);
         countdownTimer = setInterval(paintCountdown, 250);
         schedulePrefetch();
@@ -1771,8 +1746,8 @@
 
     document.getElementById("prev").addEventListener("click", () => stepFrame(-1));
     document.getElementById("next").addEventListener("click", () => stepFrame(1));
-    document.getElementById("sum-prev")?.addEventListener("click", () => stepFrame(-1));
-    document.getElementById("sum-next")?.addEventListener("click", () => stepFrame(1));
+    document.getElementById("sum-prev")?.addEventListener("click", () => stepSumFrame(-1));
+    document.getElementById("sum-next")?.addEventListener("click", () => stepSumFrame(1));
     playButton.addEventListener("click", play);
     sumPlayButton?.addEventListener("click", playSumResults);
     function stepDetector(delta) {
@@ -1965,10 +1940,6 @@
         setSumStatus(countMessage.replace("%(count)s", String(sumSequence.length)));
         syncSelectAllSum();
         sumResults.classList.remove("d-none");
-        if (cursor >= sequence().length) {
-            cursor = 0;
-        }
-        highlight({follow: true});
         sumResults.scrollIntoView({behavior: "smooth", block: "nearest"});
     }
 
@@ -1991,12 +1962,22 @@
             stackOp = null;
         }
         const active = Boolean(sumSequence?.length);
-        paintStackButton("sum-open", active && stackOp === "sum");
+        paintStackButton("sum-open", false);
         paintStackButton("diff-open", active && stackOp === "diff");
-        hideSumResults();
         if (!active) {
+            hideSumResults();
             setSumStatus("");
             return;
+        }
+        sumCursor = 0;
+        revealSumResults();
+        if (sumCutout) {
+            sumCutout.removeAttribute("src");
+            sumCutout.classList.add("d-none");
+        }
+        if (sumViewerMessage) {
+            sumViewerMessage.textContent = stackOp === "diff" ? messages.chooseDiff : messages.chooseSum;
+            sumViewerMessage.classList.remove("d-none");
         }
         setSumStatus(stackOp === "diff"
             ? messages.diffReady
@@ -2076,6 +2057,22 @@
 
     let diffBlobUrl = null;
 
+    function hideDiffResults() {
+        if (diffResultList) {
+            diffResultList.replaceChildren();
+        }
+        if (diffCutout) {
+            diffCutout.removeAttribute("src");
+            diffCutout.classList.add("d-none");
+        }
+        if (diffViewerMessage) {
+            diffViewerMessage.textContent = messages.chooseDiff;
+            diffViewerMessage.classList.remove("d-none");
+            stripProcessSpin(diffViewerMessage);
+        }
+        diffResults?.classList.add("d-none");
+    }
+
     function showDiffResult(frame) {
         if (!diffResults || !diffResultList) {
             return;
@@ -2101,7 +2098,7 @@
         diffCutout?.classList.add("d-none");
         diffResults.classList.remove("d-none");
         diffResults.scrollIntoView({behavior: "smooth", block: "nearest"});
-        fetchCutout(frame.url).then((blob) => {
+        fetchCutout(frame.url, "diff").then((blob) => {
             if (diffBlobUrl) {
                 URL.revokeObjectURL(diffBlobUrl);
             }
@@ -2141,7 +2138,7 @@
     }
 
     function subtractCheckedSums() {
-        stop();
+        stopSumLoop();
         const chosen = selectedSumFrames();
         if (chosen.length !== 2) {
             if (sumViewerMessage) {
@@ -2338,19 +2335,15 @@
     }
 
     function finishStack(frames, op) {
-        stop();
-        const keys = new Set(frames.flatMap((frame) => frame.items.map((row) => obsKey(row))));
-        allRows().forEach((row) => {
-            const box = row.querySelector(".obs-check");
-            if (box) {
-                box.checked = keys.has(obsKey(row));
-            }
-        });
-        syncSelectAll();
-        cursor = 0;
+        stopSumLoop();
+        if (op === "diff") {
+            showDiffResult(frames[0]);
+            bootstrap.Modal.getOrCreateInstance(document.getElementById("sum-obs-modal")).hide();
+            return;
+        }
         setSumMode(frames, op);
         bootstrap.Modal.getOrCreateInstance(document.getElementById("sum-obs-modal")).hide();
-        highlight();
+        playSumResults();
     }
 
     document.getElementById("sum-open")?.addEventListener("click", () => openSumModal("sum"));
@@ -2391,25 +2384,22 @@
             return;
         }
         const row = event.target.closest("[data-sum-index]");
-        if (!row || !sumSequence?.length || !sumResultsReady) {
+        if (!row || !sumSequence?.length || !sumResultsReady || sumLooping) {
             return;
         }
-        stop();
         const original = Number(row.dataset.sumIndex);
-        const frames = sequence();
-        const index = frames.findIndex((frame) => frame.sumIndex === original);
-        if (index >= 0) {
-            showFrame(index, {follow: true});
-            return;
-        }
         const frame = sumSequence[original];
         if (!frame) {
             return;
         }
+        const frames = selectedSumFrames();
+        const index = frames.findIndex((entry) => entry.sumIndex === original);
+        if (index >= 0) {
+            sumCursor = index;
+        }
         highlight({follow: true, items: frame.items, sumIndex: original});
         setWavelength(wavelengthText(frame.items), sumWaveLabel);
-        abortInflight();
-        displaySumUrl(frame.url, "");
+        displaySumUrl(frame.url, index >= 0 ? `${index + 1} / ${frames.length}` : "");
     });
     document.getElementById("sum-clear")?.addEventListener("click", () => {
         setSumMode(null);
@@ -2443,8 +2433,10 @@
 
     function replaceFrames(frames) {
         stop();
+        stopSumLoop();
         cursor = 0;
         setSumMode(null);
+        hideDiffResults();
         cutoutCache.clear();
         list.replaceChildren();
         frames.forEach((frame) => list.append(observationItem(frame)));

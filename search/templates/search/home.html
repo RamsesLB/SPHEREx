@@ -47,6 +47,16 @@
         color: #7bd0ff;
         font-size: 0.85em;
     }
+    .hackathon-note {
+        max-width: 40rem;
+        text-align: left;
+    }
+    .hackathon-note svg {
+        width: 1.15rem;
+        height: 1.15rem;
+        flex: 0 0 auto;
+        margin-top: 0.15rem;
+    }
     .landing-footer {
         color: #8c9ba5;
         font-size: 0.7rem;
@@ -62,6 +72,13 @@
                 <h1 class="hero-title font-headline fw-bold text-white mb-4">{% trans "SPHEREx: the sky in 102 infrared colors" %}</h1>
                 <p class="lead hero-lead fs-5 mx-auto mb-4 fw-normal">{% trans "The NASA near-infrared observatory surveys the whole sky from 0.75 to 5 µm and records 102 colors at every point. Search a position in the public IRSA archive and compare that same patch from one date to the next." %}</p>
                 <p class="hero-note mx-auto mb-4">{% blocktrans %}The search address also returns JSON. Add <code>format=json</code>, or send <code>Accept: application/json</code>.{% endblocktrans %}</p>
+                <div class="alert alert-info hackathon-note d-flex align-items-start gap-2 mx-auto mb-4" role="status">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                        <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0"/>
+                    </svg>
+                    <span>{% trans "Built in the two days of the NASA hackathon, for the challenge as it was set." %}</span>
+                </div>
                 <div class="d-flex flex-column align-items-center gap-3">
                     <a class="btn btn-nasa-blue d-inline-flex align-items-center gap-2 text-decoration-none" href="{% url 'index' %}">
                         <span>{% trans "Open the data search" %}</span>

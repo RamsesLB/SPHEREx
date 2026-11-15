@@ -499,6 +499,9 @@ msgstr "Misión"
 msgid "Data search"
 msgstr "Búsqueda de datos"
 
+msgid "Built in the two days of the NASA hackathon, for the challenge as it was set."
+msgstr "Construido en los dos días del hackathon de la NASA, con el alcance que pedía el desafío."
+
 msgid "Open the data search"
 msgstr "Abrir la búsqueda de datos"
 
