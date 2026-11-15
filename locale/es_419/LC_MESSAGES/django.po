@@ -147,6 +147,12 @@ msgstr "Confirmar"
 msgid "Detectors %(list)s · %(count)s observations"
 msgstr "Detectores %(list)s · %(count)s observaciones"
 
+msgid "Sum results"
+msgstr "Resultados de suma"
+
+msgid "%(count)s summed images"
+msgstr "%(count)s imágenes sumadas"
+
 msgid "No observation has more than one detector to sum."
 msgstr "Ninguna observación tiene más de un detector para sumar."
 

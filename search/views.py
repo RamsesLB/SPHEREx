@@ -381,6 +381,8 @@ def _js_messages():
         "selectDetector": _("Select at least one detector."),
         "sumReady": _("%(count)s observations ready to sum. Press play."),
         "sumGroup": _("Detectors %(list)s · %(count)s observations"),
+        "sumDetectors": _("Detectors %(list)s"),
+        "sumCount": _("%(count)s summed images"),
         "sumPick": _("Choose the observations to include. Each checked observation becomes one summed image. Confirm with none checked to keep every match."),
         "sumNoGroup": _("No observation has more than one detector to sum."),
         "confirm": _("Confirm"),

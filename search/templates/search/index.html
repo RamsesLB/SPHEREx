@@ -122,6 +122,10 @@
     #result-list { max-height: calc(var(--stage-h) - 1.75rem); overflow: auto; }
     #result-list .obs-open { font-size: inherit; line-height: inherit; }
     #result-list .list-group-item.active .obs-open { color: inherit; }
+    .sum-results { margin-top: 1.25rem; }
+    #sum-result-list { max-height: 14rem; overflow: auto; }
+    #sum-result-list .sum-open { font-size: inherit; line-height: inherit; }
+    #sum-result-list .list-group-item.active .sum-open { color: inherit; }
     #cutout-box legend { font-size: 1rem; padding: 0 0.4rem; }
     .search-trail {
         --trail-gap: 0.2rem;
@@ -463,6 +467,13 @@
             <div id="search-info" class="alert alert-info mt-2 mb-0{% if not info %} d-none{% endif %}">{{ info }}</div>
         </div>
         </div>
+        <div id="sum-results" class="sum-results d-none">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h2 class="h6 mb-0">{% trans "Sum results" %}</h2>
+                <span class="small text-muted" id="sum-result-count"></span>
+            </div>
+            <div class="list-group" id="sum-result-list"></div>
+        </div>
     </section>
     <div class="modal fade" id="empty-detector-modal" tabindex="-1" aria-labelledby="empty-detector-title" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -634,6 +645,9 @@
     const detectorSelect = document.getElementById("detector");
     const playButton = document.getElementById("play");
     const list = document.getElementById("result-list");
+    const sumResults = document.getElementById("sum-results");
+    const sumResultList = document.getElementById("sum-result-list");
+    const sumResultCount = document.getElementById("sum-result-count");
     let cursor = 0;
     let timer = null;
     let releaseWait = null;
@@ -641,7 +655,7 @@
     const cutoutCache = new Map();
     const inflight = new Map();
     const prefetchLimit = 2;
-    let sumDetectors = null;
+    let sumSequence = null;
     let blobUrl = null;
     let playing = false;
     let frameMs = null;
@@ -800,8 +814,26 @@
         }
         [...list.querySelectorAll("[data-id]")].forEach((entry) => entry.classList.remove("active"));
         current.forEach((entry) => entry.classList.add("active"));
+        if (sumResultList) {
+            [...sumResultList.querySelectorAll("[data-sum-index]")].forEach((row) => {
+                const active = sumSequence && Number(row.dataset.sumIndex) === cursor;
+                row.classList.toggle("active", active);
+            });
+        }
+        if (!follow) {
+            return;
+        }
+        if (sumSequence?.length && sumResultList) {
+            const sumRow = sumResultList.querySelector(`[data-sum-index="${cursor}"]`);
+            if (sumRow) {
+                const listRect = sumResultList.getBoundingClientRect();
+                const itemRect = sumRow.getBoundingClientRect();
+                sumResultList.scrollBy({top: itemRect.top - listRect.top, behavior: "smooth"});
+            }
+            return;
+        }
         const scrollTarget = current.find((entry) => !entry.classList.contains("d-none")) || current[0];
-        if (!scrollTarget || !follow) {
+        if (!scrollTarget) {
             return;
         }
         const listRect = list.getBoundingClientRect();
@@ -832,8 +864,8 @@
     }
 
     function sequence() {
-        if (sumDetectors?.length) {
-            return sumGroups(sumDetectors);
+        if (sumSequence?.length) {
+            return sumSequence;
         }
         return selectedFrames().map((item) => ({items: [item], url: cutoutUrl(item.dataset.id)}));
     }
@@ -994,7 +1026,7 @@
     }
 
     function emptySequenceMessage() {
-        if (sumDetectors?.length) {
+        if (sumSequence) {
             return messages.sumNone;
         }
         return visibleFrames().length ? messages.selectToPlay : messages.noDetector;
@@ -1013,7 +1045,7 @@
             message.classList.remove("d-none");
             cutout.classList.add("d-none");
             frameLabel.textContent = "";
-            if (!sumDetectors?.length && !visibleFrames().length) {
+            if (!sumSequence && !visibleFrames().length) {
                 warnIfEmpty();
             }
             return;
@@ -1302,22 +1334,64 @@
         showClicked(item);
     });
 
-    function setSumMode(detectors) {
+    function sumDetectorsList() {
+        return sumSequence?.[0]?.detectors || [];
+    }
+
+    function renderSumResults() {
+        if (!sumResults || !sumResultList) {
+            return;
+        }
+        sumResultList.replaceChildren();
+        if (!sumSequence?.length) {
+            sumResults.classList.add("d-none");
+            if (sumResultCount) {
+                sumResultCount.textContent = "";
+            }
+            return;
+        }
+        const detectorLabel = messages.sumDetectors.replace("%(list)s", sumDetectorsList().join(", "));
+        sumSequence.forEach((frame, index) => {
+            const row = document.createElement("button");
+            row.type = "button";
+            row.className = "list-group-item list-group-item-action text-start sum-open";
+            row.dataset.sumIndex = String(index);
+            const date = document.createElement("span");
+            date.className = "d-block";
+            date.textContent = frame.date || "";
+            const detectors = document.createElement("span");
+            detectors.className = "d-block";
+            detectors.textContent = detectorLabel;
+            const meta = document.createElement("span");
+            meta.className = "d-block small text-muted";
+            meta.textContent = [frame.obsId, frame.collection].filter(Boolean).join(" · ");
+            row.append(date, detectors, meta);
+            sumResultList.append(row);
+        });
+        if (sumResultCount) {
+            sumResultCount.textContent = messages.sumCount.replace("%(count)s", String(sumSequence.length));
+        }
+        sumResults.classList.remove("d-none");
+    }
+
+    function setSumMode(frames) {
         const button = document.getElementById("sum-open");
         const status = document.getElementById("sum-status");
-        sumDetectors = detectors;
-        button?.classList.toggle("btn-primary", Boolean(detectors?.length));
-        button?.classList.toggle("btn-outline-secondary", !detectors?.length);
-        button?.setAttribute("aria-pressed", detectors?.length ? "true" : "false");
+        sumSequence = frames?.length ? frames : null;
+        const active = Boolean(sumSequence?.length);
+        button?.classList.toggle("btn-primary", active);
+        button?.classList.toggle("btn-outline-secondary", !active);
+        button?.setAttribute("aria-pressed", active ? "true" : "false");
+        renderSumResults();
         if (!status) {
             return;
         }
-        if (!detectors?.length) {
+        if (!active) {
             status.textContent = "";
             status.classList.add("d-none");
             return;
         }
-        status.textContent = messages.sumReady.replace("%(count)s", String(sequence().length));
+        status.textContent = messages.sumReady.replace("%(count)s", String(sumSequence.length));
         status.classList.remove("d-none");
     }
 
@@ -1363,7 +1437,7 @@
             return;
         }
         const groups = sumGroupChoices();
-        const current = (sumDetectors || []).join(",");
+        const current = sumDetectorsList().join(",");
         choices.replaceChildren();
         groups.forEach((group, index) => {
             const wrap = document.createElement("div");
@@ -1441,7 +1515,23 @@
         if (!indexes.length) {
             indexes = group.bundles.map((_rows, index) => index);
         }
-        const keys = new Set(indexes.map((index) => obsKey(group.bundles[index][0])));
+        const needed = new Set(group.detectors.map(String));
+        const frames = indexes.map((index) => {
+            const rows = group.bundles[index];
+            const sample = rows[0];
+            const members = rows
+                .filter((row) => needed.has(row.dataset.detector))
+                .sort((left, right) => Number(left.dataset.detector) - Number(right.dataset.detector));
+            return {
+                items: members,
+                url: sumUrl(members.map((row) => row.dataset.id)),
+                detectors: group.detectors,
+                date: sample.dataset.date || "",
+                obsId: sample.dataset.obsId || "",
+                collection: sample.dataset.collection || "",
+            };
+        }).filter((frame) => frame.items.length === needed.size);
+        const keys = new Set(frames.map((frame) => obsKey(frame.items[0])));
         allRows().forEach((row) => {
             const box = row.querySelector(".obs-check");
             if (box) {
@@ -1450,9 +1540,14 @@
         });
         syncSelectAll();
         cursor = 0;
-        setSumMode(group.detectors);
-        highlight();
+        setSumMode(frames);
         bootstrap.Modal.getOrCreateInstance(document.getElementById("sum-obs-modal")).hide();
+        if (frames.length) {
+            sumResults?.scrollIntoView({behavior: "smooth", block: "nearest"});
+            showFrame(0, {follow: true});
+        } else {
+            highlight();
+        }
     }
 
     document.getElementById("sum-open")?.addEventListener("click", openSumModal);
@@ -1462,6 +1557,14 @@
         document.querySelectorAll(".sum-obs-check").forEach((box) => {
             box.checked = event.target.checked;
         });
+    });
+    sumResultList?.addEventListener("click", (event) => {
+        const row = event.target.closest("[data-sum-index]");
+        if (!row || !sumSequence?.length) {
+            return;
+        }
+        stop();
+        showFrame(Number(row.dataset.sumIndex), {follow: true});
     });
     document.getElementById("sum-clear")?.addEventListener("click", () => {
         setSumMode(null);
