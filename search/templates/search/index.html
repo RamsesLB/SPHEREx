@@ -1590,6 +1590,10 @@
                 return;
             }
             index += 1;
+            if (index >= current.length) {
+                stopSumLoop();
+                return;
+            }
         }
     }
 
