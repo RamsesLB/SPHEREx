@@ -440,7 +440,7 @@ def _js_messages():
         "measuring": _("Timing the first image…"),
         "progress": _("%(done)s / %(total)s · %(eta)s left"),
         "noResults": _("No results."),
-        "chooseObservation": _("Choose an observation or press play."),
+        "chooseObservation": _("Click an observation, or tick several checkboxes and press play."),
         "selectToPlay": _("Select at least one observation to play."),
         "selectObservation": _("Include in playback"),
         "sum": _("Sum"),

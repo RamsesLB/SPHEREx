@@ -51,7 +51,7 @@ class CoordinateForm(forms.Form):
         required=False,
         choices=[(str(number), str(number)) for number in range(1, 7)],
         initial="2",
-        widget=forms.Select(attrs={"class": "form-select", "id": "detector"}),
+        widget=forms.Select(attrs={"class": "form-select form-select-sm", "id": "detector"}),
     )
     fov = forms.FloatField(
         label=_("Side"),
@@ -90,7 +90,7 @@ class CoordinateForm(forms.Form):
         if not self.is_bound:
             self.fields["collection"].initial = services.default_collection(names)
         self.fields["detector"].choices = [
-            (str(number), _("Detector %(number)s") % {"number": number})
+            (str(number), str(number))
             for number in range(1, 7)
         ]
 

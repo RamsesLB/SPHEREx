@@ -27,8 +27,8 @@ msgstr "Mapa base"
 msgid "Check the coordinates and the cutout size."
 msgstr "Revisa las coordenadas y el tamaño del recorte."
 
-msgid "Choose an observation or press play."
-msgstr "Elige una observación o presiona reproducir."
+msgid "Click an observation, or tick several checkboxes and press play."
+msgstr "Haz clic en una observación, o marca varias casillas y pulsa reproducir."
 
 msgid "Click the map to copy RA and Dec, then search."
 msgstr "Haz clic en el mapa para copiar RA y Dec, y luego busca."
@@ -90,8 +90,8 @@ msgstr "Sin observaciones"
 msgid "No observations for this detector."
 msgstr "No hay observaciones de este detector."
 
-msgid "No observations were found for this collection and this detector. Try another detector or another area of the sky."
-msgstr "No se encontraron observaciones para esta colección y este detector. Prueba con otro detector o con otra zona del cielo."
+msgid "No observations were found for the selected collections in this region of the sky."
+msgstr "No se encontraron observaciones de las colecciones seleccionadas en esta región del cielo."
 
 msgid "No results."
 msgstr "Sin resultados."
@@ -137,6 +137,9 @@ msgstr "Elige las observaciones a incluir. Cada observación marcada se conviert
 
 msgid "Date"
 msgstr "Fecha"
+
+msgid "Det."
+msgstr "Det."
 
 msgid "Observation"
 msgstr "Observación"

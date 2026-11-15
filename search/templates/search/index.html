@@ -58,17 +58,15 @@
         opacity: 1;
     }
     .icon-btn svg { width: 0.95rem; height: 0.95rem; fill: currentColor; display: block; }
-    .process-spin {
-        width: 0.75rem;
-        height: 0.75rem;
-        border-width: 0.12em;
-        margin-right: 0.4rem;
-        vertical-align: -0.125em;
-        flex: 0 0 auto;
-    }
     .stage-frame {
         width: min(calc(var(--stage-h) * 1.22), calc(100vw - 32rem));
         height: var(--stage-h);
+    }
+    #aladin-lite-div.aladin-container,
+    #aladin-lite-div.aladin-container[data-theme="light"] {
+        --text-color: #ececec;
+        --bg-color: #000;
+        --border-color: #ececec;
     }
     .stage-actions {
         display: flex;
@@ -127,14 +125,77 @@
         background: #111;
         transition: none;
     }
-    #result-list { max-height: calc(var(--stage-h) - 1.75rem); overflow: auto; }
-    #result-list .obs-open { font-size: inherit; line-height: inherit; }
-    #result-list .list-group-item.active .obs-open { color: inherit; }
+    #result-list,
+    #sum-result-list,
+    #diff-result-list { max-height: calc(var(--stage-h) - 1.75rem); overflow: auto; }
+    .obs-head,
+    .list-group-item.obs-row {
+        display: grid;
+        grid-template-columns: 1.15rem minmax(0, 1fr);
+        gap: 0.45rem;
+        align-items: center;
+    }
+    .obs-head {
+        padding: 0 0.75rem 0.35rem 0.75rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #6c757d;
+        text-transform: none;
+    }
+    .obs-head-spacer { width: 1.15rem; height: 1.15rem; }
+    .obs-head .form-check-input {
+        margin: 0;
+        justify-self: center;
+    }
+    .obs-cols {
+        display: grid;
+        grid-template-columns: minmax(6.5rem, 1.35fr) minmax(5rem, 1.1fr) minmax(5rem, 1.1fr);
+        gap: 0.4rem;
+        width: 100%;
+        align-items: center;
+        text-align: left;
+        min-width: 0;
+    }
+    .obs-cols > span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.8rem;
+        line-height: 1.25;
+    }
+    #result-list .obs-open,
+    #sum-result-list .sum-open {
+        font-size: inherit;
+        line-height: inherit;
+    }
+    #result-list .list-group-item.active .obs-open,
+    #sum-result-list .list-group-item.active .sum-open { color: inherit; }
+    #result-list .list-group-item,
+    #sum-result-list .list-group-item,
+    #diff-result-list .list-group-item {
+        padding-top: 0.45rem;
+        padding-bottom: 0.45rem;
+    }
+    .detector-stepper {
+        display: flex;
+        align-items: center;
+        gap: 0.2rem;
+        max-width: 7rem;
+    }
+    .detector-stepper #detector {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding-left: 0.35rem;
+        padding-right: 1.4rem;
+        text-align: center;
+    }
+    .detector-stepper .icon-btn {
+        flex: 0 0 auto;
+        padding: 0.15rem 0.35rem;
+    }
     .sum-results { margin-top: 1.75rem; padding-top: 0.5rem; }
     .sum-results .sky-layout { --stage-h: min(calc(100vh - 18rem), 520px); }
-    #sum-result-list { max-height: calc(var(--stage-h) - 1.75rem); overflow: auto; }
-    #sum-result-list .sum-open { font-size: inherit; line-height: inherit; }
-    #sum-result-list .list-group-item.active .sum-open { color: inherit; }
     #sum-viewer {
         background: #111;
         color: #ddd;
@@ -144,13 +205,23 @@
         position: relative;
         overflow: hidden;
     }
-    #sum-cutout {
+    #sum-cutout,
+    #diff-cutout {
         position: absolute;
         inset: 0;
         width: 100%;
         height: 100%;
         object-fit: contain;
         image-rendering: pixelated;
+    }
+    #diff-viewer {
+        background: #111;
+        color: #ddd;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
     }
     #cutout-box legend { font-size: 1rem; padding: 0 0.4rem; }
     .search-trail {
@@ -405,36 +476,46 @@
             <div class="field-row mb-2">
                 <label class="form-label" for="detector">{{ form.detector.label }}</label>
                 <div class="field-control">
-                    <select class="form-select" id="detector">
-                        {% for value, label in form.fields.detector.choices %}
-                        <option value="{{ value }}"{% if form.detector.value|stringformat:"s" == value|stringformat:"s" %} selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
+                    <div class="detector-stepper">
+                        <button type="button" class="btn btn-outline-secondary btn-sm icon-btn" id="detector-prev" aria-label="{% trans "Previous" %}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M491 100.8C478.1 93.8 462.3 94.5 450 102.6L192 272.1L192 128C192 110.3 177.7 96 160 96C142.3 96 128 110.3 128 128L128 512C128 529.7 142.3 544 160 544C177.7 544 192 529.7 192 512L192 367.9L450 537.5C462.3 545.6 478 546.3 491 539.3C504 532.3 512 518.8 512 504.1L512 136.1C512 121.4 503.9 107.9 491 100.9z"/></svg>
+                        </button>
+                        <select class="form-select form-select-sm" id="detector">
+                            {% for value, label in form.fields.detector.choices %}
+                            <option value="{{ value }}"{% if form.detector.value|stringformat:"s" == value|stringformat:"s" %} selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="button" class="btn btn-outline-secondary btn-sm icon-btn" id="detector-next" aria-label="{% trans "Next" %}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M149 100.8C161.9 93.8 177.7 94.5 190 102.6L448 272.1L448 128C448 110.3 462.3 96 480 96C497.7 96 512 110.3 512 128L512 512C512 529.7 497.7 544 480 544C462.3 544 448 529.7 448 512L448 367.9L190 537.5C177.7 545.6 162 546.3 149 539.3C136 532.3 128 518.7 128 504L128 136C128 121.3 136.1 107.8 149 100.8z"/></svg>
+                        </button>
+                    </div>
                 </div>
             </div>
             <div class="d-flex justify-content-between align-items-center mb-2">
-                <div class="d-flex align-items-center gap-2">
-                    <input class="form-check-input m-0" type="checkbox" id="select-all-obs" checked aria-label="{% trans "Select all" %}">
-                    <h2 class="h6 mb-0">{% trans "Observations" %}</h2>
-                </div>
+                <h2 class="h6 mb-0">{% trans "Observations" %}</h2>
                 <span class="small text-muted" id="visible-count"></span>
+            </div>
+            <div class="obs-head">
+                <input class="form-check-input" type="checkbox" id="select-all-obs" checked aria-label="{% trans "Select all" %}">
+                <div class="obs-cols">
+                    <span>{% trans "Date" %}</span>
+                    <span>{% trans "Observation" %}</span>
+                    <span>{% trans "Collection" %}</span>
+                </div>
             </div>
             <div class="list-group" id="result-list">
                 {% for frame in frames %}
-                <div class="list-group-item list-group-item-action d-flex align-items-start gap-2"
+                <div class="list-group-item list-group-item-action obs-row"
                      data-id="{{ frame.id }}"
                      data-obs-id="{{ frame.obs_id }}"
                      data-collection="{{ frame.collection }}"
                      data-date="{{ frame.date }}"
                      data-detector="{{ frame.detector|default:'' }}">
-                    <input class="form-check-input obs-check mt-1" type="checkbox" checked aria-label="{% trans "Include in playback" %}">
-                    <button type="button" class="btn btn-link text-start text-reset text-decoration-none p-0 flex-grow-1 obs-open">
-                        <span class="d-block">{{ frame.date }}</span>
-                        <span class="d-block">
-                            {{ frame.detector_label }}
-                            {% if frame.wavelength %} · {{ frame.wavelength }}{% endif %}
-                        </span>
-                        <span class="d-block small text-muted">{{ frame.obs_id }}{% if frame.collection %} · {{ frame.collection }}{% endif %}</span>
+                    <input class="form-check-input obs-check m-0" type="checkbox" checked aria-label="{% trans "Include in playback" %}">
+                    <button type="button" class="btn btn-link text-start text-reset text-decoration-none p-0 obs-open obs-cols">
+                        <span class="obs-date">{{ frame.date }}</span>
+                        <span class="obs-id" title="{{ frame.obs_id }}">{{ frame.obs_id }}</span>
+                        <span class="obs-col" title="{{ frame.collection }}">{{ frame.collection }}</span>
                     </button>
                 </div>
                 {% empty %}
@@ -456,7 +537,7 @@
                  data-diff-pattern="{% url 'diff_cutout' %}"
                  {% endif %}>
                 <p id="viewer-message" class="m-3 text-center">
-                    {% trans "Choose an observation or press play." %}
+                    {% trans "Click an observation, or tick several checkboxes and press play." %}
                 </p>
                 <img id="cutout" class="d-none" alt="{% trans "SPHEREx cutout" %}">
                 <div id="loading" class="d-none position-absolute top-0 start-0 w-100 h-100 align-items-center justify-content-center" style="background: rgba(0,0,0,.45);">
@@ -503,11 +584,16 @@
             <div class="sky-layout">
                 <div class="sky-form">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="d-flex align-items-center gap-2">
-                            <input class="form-check-input m-0" type="checkbox" id="select-all-sum" checked aria-label="{% trans "Select all" %}">
-                            <h2 class="h6 mb-0" id="sum-results-title">{% trans "Sum results" %}</h2>
-                        </div>
+                        <h2 class="h6 mb-0" id="sum-results-title">{% trans "Sum results" %}</h2>
                         <span class="small text-muted" id="sum-result-count"></span>
+                    </div>
+                    <div class="obs-head">
+                        <input class="form-check-input" type="checkbox" id="select-all-sum" checked aria-label="{% trans "Select all" %}">
+                        <div class="obs-cols">
+                            <span>{% trans "Date" %}</span>
+                            <span>{% trans "Observation" %}</span>
+                            <span>{% trans "Collection" %}</span>
+                        </div>
                     </div>
                     <div class="list-group" id="sum-result-list"></div>
                 </div>
@@ -536,12 +622,20 @@
             </div>
         </div>
         <div id="diff-results" class="sum-results d-none">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h2 class="h6 mb-0">{% trans "Subtraction results" %}</h2>
-                <span class="small text-muted">{% trans "1 subtracted image" %}</span>
-            </div>
             <div class="sky-layout">
                 <div class="sky-form">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h2 class="h6 mb-0">{% trans "Subtraction results" %}</h2>
+                        <span class="small text-muted">{% trans "1 subtracted image" %}</span>
+                    </div>
+                    <div class="obs-head" aria-hidden="true">
+                        <span class="obs-head-spacer"></span>
+                        <div class="obs-cols">
+                            <span>{% trans "Date" %}</span>
+                            <span>{% trans "Observation" %}</span>
+                            <span>{% trans "Collection" %}</span>
+                        </div>
+                    </div>
                     <div class="list-group" id="diff-result-list"></div>
                 </div>
                 <div class="sky-stage">
@@ -566,7 +660,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans "Close" %}"></button>
                 </div>
                 <div class="modal-body">
-                    {% trans "No observations were found for this collection and this detector. Try another detector or another area of the sky." %}
+                    {% trans "No observations were found for the selected collections in this region of the sky." %}
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-warning" data-bs-dismiss="modal">{% trans "Accept" %}</button>
@@ -863,9 +957,28 @@
         all.disabled = boxes.length === 0;
     }
 
+    function appendObsCols(parent, {date, obsId, collection}) {
+        const dateEl = document.createElement("span");
+        dateEl.className = "obs-date";
+        dateEl.textContent = date || "";
+        const idEl = document.createElement("span");
+        idEl.className = "obs-id";
+        idEl.textContent = obsId || "";
+        if (obsId) {
+            idEl.title = obsId;
+        }
+        const colEl = document.createElement("span");
+        colEl.className = "obs-col";
+        colEl.textContent = collection || "";
+        if (collection) {
+            colEl.title = collection;
+        }
+        parent.append(dateEl, idEl, colEl);
+    }
+
     function observationItem(frame) {
         const row = document.createElement("div");
-        row.className = "list-group-item list-group-item-action d-flex align-items-start gap-2";
+        row.className = "list-group-item list-group-item-action obs-row";
         row.dataset.id = frame.id;
         row.dataset.obsId = frame.obs_id;
         row.dataset.collection = frame.collection || "";
@@ -873,24 +986,17 @@
         row.dataset.detector = frame.detector ?? "";
         const box = document.createElement("input");
         box.type = "checkbox";
-        box.className = "form-check-input obs-check mt-1";
+        box.className = "form-check-input obs-check m-0";
         box.checked = true;
         box.setAttribute("aria-label", messages.selectObservation);
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "btn btn-link text-start text-reset text-decoration-none p-0 flex-grow-1 obs-open";
-        const date = document.createElement("span");
-        date.className = "d-block";
-        date.textContent = frame.date;
-        const detail = document.createElement("span");
-        detail.className = "d-block";
-        detail.textContent = frame.wavelength
-            ? `${frame.detector_label} · ${frame.wavelength}`
-            : frame.detector_label;
-        const meta = document.createElement("span");
-        meta.className = "d-block small text-muted";
-        meta.textContent = frame.collection ? `${frame.obs_id} · ${frame.collection}` : frame.obs_id;
-        button.append(date, detail, meta);
+        button.className = "btn btn-link text-start text-reset text-decoration-none p-0 obs-open obs-cols";
+        appendObsCols(button, {
+            date: frame.date,
+            obsId: frame.obs_id,
+            collection: frame.collection,
+        });
         row.append(box, button);
         return row;
     }
@@ -1489,6 +1595,25 @@
     document.getElementById("sum-next")?.addEventListener("click", () => stepFrame(1));
     playButton.addEventListener("click", play);
     sumPlayButton?.addEventListener("click", play);
+    function stepDetector(delta) {
+        const options = [...detectorSelect.options];
+        if (!options.length) {
+            return;
+        }
+        let index = options.findIndex((option) => option.value === detectorSelect.value);
+        if (index < 0) {
+            index = 0;
+        }
+        const next = options[(index + delta + options.length) % options.length];
+        if (!next || next.value === detectorSelect.value) {
+            return;
+        }
+        detectorSelect.value = next.value;
+        detectorSelect.dispatchEvent(new Event("change"));
+    }
+
+    document.getElementById("detector-prev")?.addEventListener("click", () => stepDetector(-1));
+    document.getElementById("detector-next")?.addEventListener("click", () => stepDetector(1));
     detectorSelect.addEventListener("change", () => {
         stop();
         cursor = 0;
@@ -1620,32 +1745,23 @@
         }
         sumResultsReady = true;
         sumResultList.replaceChildren();
-        const detectors = sumDetectorsList();
-        const detectorLabel = detectors.length === 1
-            ? messages.detectorNumber.replace("%(number)s", detectors[0])
-            : messages.sumDetectors.replace("%(list)s", detectors.join(", "));
         sumSequence.forEach((frame) => {
             const row = document.createElement("div");
-            row.className = "list-group-item list-group-item-action d-flex align-items-start gap-2";
+            row.className = "list-group-item list-group-item-action obs-row";
             row.dataset.sumIndex = String(frame.sumIndex);
             const box = document.createElement("input");
             box.type = "checkbox";
-            box.className = "form-check-input sum-check mt-1";
+            box.className = "form-check-input sum-check m-0";
             box.checked = true;
             box.setAttribute("aria-label", messages.selectObservation);
             const button = document.createElement("button");
             button.type = "button";
-            button.className = "btn btn-link text-start text-reset text-decoration-none p-0 flex-grow-1 sum-open";
-            const date = document.createElement("span");
-            date.className = "d-block";
-            date.textContent = frame.date || "";
-            const detectors = document.createElement("span");
-            detectors.className = "d-block";
-            detectors.textContent = detectorLabel;
-            const meta = document.createElement("span");
-            meta.className = "d-block small text-muted";
-            meta.textContent = [frame.obsId, frame.collection].filter(Boolean).join(" · ");
-            button.append(date, detectors, meta);
+            button.className = "btn btn-link text-start text-reset text-decoration-none p-0 sum-open obs-cols";
+            appendObsCols(button, {
+                date: frame.date,
+                obsId: frame.obsId,
+                collection: frame.collection,
+            });
             row.append(box, button);
             sumResultList.append(row);
         });
@@ -1777,20 +1893,18 @@
         }
         diffResultList.replaceChildren();
         const row = document.createElement("div");
-        row.className = "list-group-item list-group-item-action active";
-        const date = document.createElement("span");
-        date.className = "d-block";
-        date.textContent = frame.date || "";
-        const detectors = document.createElement("span");
-        detectors.className = "d-block";
-        const numbers = frame.detectors || [];
-        detectors.textContent = numbers.length === 1
-            ? messages.detectorNumber.replace("%(number)s", numbers[0])
-            : messages.sumDetectors.replace("%(list)s", numbers.join(", "));
-        const meta = document.createElement("span");
-        meta.className = "d-block small text-muted";
-        meta.textContent = [frame.obsId, frame.collection].filter(Boolean).join(" · ");
-        row.append(date, detectors, meta);
+        row.className = "list-group-item list-group-item-action obs-row active";
+        const body = document.createElement("div");
+        body.className = "obs-cols";
+        appendObsCols(body, {
+            date: frame.date,
+            obsId: frame.obsId,
+            collection: frame.collection,
+        });
+        const spacer = document.createElement("span");
+        spacer.className = "obs-head-spacer";
+        spacer.setAttribute("aria-hidden", "true");
+        row.append(spacer, body);
         diffResultList.append(row);
         setProcessMessage(diffViewerMessage, messages.diffPlaying, true);
         diffCutout?.classList.add("d-none");
@@ -2330,11 +2444,19 @@
             fov: Number("{{ map_fov }}"),
             target: "{{ target_ra }} {{ target_dec }}",
             cooFrame: "equatorial",
+            mode: "dark",
             showCooGridControl: true,
             showSimbadPointerControl: true,
             showCooGrid: true,
             showFullscreenControl: true,
         });
+        // Keep labels readable on the sky even if a prior light theme was saved.
+        try {
+            aladin._applyTheme?.("dark");
+            localStorage.setItem("theme", "dark");
+        } catch (error) {
+            map.setAttribute("data-theme", "dark");
+        }
         const cutoutOverlay = A.graphicOverlay({name: "cutout", color: "#00e5ff", lineWidth: 2});
         aladin.addOverlay(cutoutOverlay);
 
