@@ -63,6 +63,7 @@
         gap: 0.5rem 0.75rem;
         margin-top: 0.75rem;
     }
+    .wave-label { margin-left: auto; white-space: nowrap; }
     #survey { width: 100%; }
     @media (max-width: 991.98px) {
         .sky-layout { flex-direction: column; align-items: stretch; }
@@ -498,7 +499,8 @@
                      data-obs-id="{{ frame.obs_id }}"
                      data-collection="{{ frame.collection }}"
                      data-date="{{ frame.date }}"
-                     data-detector="{{ frame.detector|default:'' }}">
+                     data-detector="{{ frame.detector|default:'' }}"
+                     data-wavelength="{{ frame.wavelength }}">
                     <input class="form-check-input obs-check m-0" type="checkbox" checked aria-label="{% trans "Include in playback" %}">
                     <button type="button" class="btn btn-link text-start text-reset text-decoration-none p-0 obs-open obs-cols">
                         <span class="obs-date">{{ frame.date }}</span>
@@ -558,6 +560,7 @@
                     {% trans "AllWISE 2010" %}
                 </label>
                 <span id="frame-label" class="small text-muted"></span>
+                <span id="wave-label" class="wave-label small text-muted"></span>
             </div>
             <p id="sum-status" class="small text-muted d-none mb-0 mt-2"></p>
             <div id="play-progress" class="d-none mt-2">
@@ -615,6 +618,7 @@
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M96 320C96 302.3 110.3 288 128 288H512C529.7 288 544 302.3 544 320C544 337.7 529.7 352 512 352H128C110.3 352 96 337.7 96 320z"/></svg>
                         </button>
                         <span id="sum-frame-label" class="small text-muted"></span>
+                        <span id="sum-wave-label" class="wave-label small text-muted"></span>
                     </div>
                 </div>
             </div>
@@ -829,6 +833,8 @@
     const frameLoadBar = document.getElementById("frame-load-bar");
     const message = document.getElementById("viewer-message");
     const frameLabel = document.getElementById("frame-label");
+    const waveLabel = document.getElementById("wave-label");
+    const sumWaveLabel = document.getElementById("sum-wave-label");
     const visibleCount = document.getElementById("visible-count");
     const detectorSelect = document.getElementById("detector");
     const playButton = document.getElementById("play");
@@ -999,6 +1005,7 @@
         row.dataset.collection = frame.collection || "";
         row.dataset.date = frame.date || "";
         row.dataset.detector = frame.detector ?? "";
+        row.dataset.wavelength = frame.wavelength || "";
         const box = document.createElement("input");
         box.type = "checkbox";
         box.className = "form-check-input obs-check m-0";
@@ -1308,6 +1315,7 @@
             message.classList.remove("d-none");
             cutout.classList.add("d-none");
             setFrameLabel("");
+            setWavelength("");
             if (!sumSequence && !visibleFrames().length) {
                 warnIfEmpty();
             }
@@ -1325,10 +1333,13 @@
             abortInflight();
         }
         const label = `${cursor + 1} / ${frames.length}`;
+        const wave = wavelengthText(frame.items);
         if (sumSequence?.length) {
+            setWavelength(wave, sumWaveLabel);
             await displaySumUrl(frame.url, label);
             return;
         }
+        setWavelength(wave);
         await displayUrl(frame.url, label);
     }
 
@@ -1341,6 +1352,7 @@
         highlight({item});
         abortInflight();
         const label = index >= 0 ? `${index + 1} / ${frames.length}` : "";
+        setWavelength(item.dataset.wavelength || "");
         displayUrl(cutoutUrl(item.dataset.id), label);
     }
 
@@ -1403,6 +1415,7 @@
 
     function stop() {
         playing = false;
+        stopSumLoop();
         abortInflight();
         setLoading(false);
         if (timer) {
@@ -1454,14 +1467,20 @@
     }
 
     function setPlayIcon(active) {
-        for (const button of [playButton, sumPlayButton]) {
-            if (!button) {
-                continue;
-            }
-            button.querySelector(".icon-play")?.classList.toggle("d-none", active);
-            button.querySelector(".icon-pause")?.classList.toggle("d-none", !active);
-            button.setAttribute("aria-label", active ? messages.pause : messages.play);
+        setButtonPlayIcon(playButton, active);
+    }
+
+    function setSumPlayIcon(active) {
+        setButtonPlayIcon(sumPlayButton, active);
+    }
+
+    function setButtonPlayIcon(button, active) {
+        if (!button) {
+            return;
         }
+        button.querySelector(".icon-play")?.classList.toggle("d-none", active);
+        button.querySelector(".icon-pause")?.classList.toggle("d-none", !active);
+        button.setAttribute("aria-label", active ? messages.pause : messages.play);
     }
 
     function stepFrame(delta) {
@@ -1473,8 +1492,108 @@
         showFrame(cursor + delta, {follow: true});
     }
 
+    function wavelengthText(items) {
+        const labels = [];
+        (items || []).forEach((row) => {
+            const value = row?.dataset?.wavelength || "";
+            if (value && !labels.includes(value)) {
+                labels.push(value);
+            }
+        });
+        return labels.join(" · ");
+    }
+
+    function setWavelength(text, target = waveLabel) {
+        if (target) {
+            target.textContent = text || "";
+        }
+    }
+
     function setFrameLabel(text) {
         frameLabel.textContent = text;
+    }
+
+    let sumLooping = false;
+    let sumLoopToken = 0;
+
+    function stopSumLoop() {
+        const wasLooping = sumLooping;
+        sumLooping = false;
+        sumLoopToken += 1;
+        setSumPlayIcon(false);
+        if (!wasLooping || playing) {
+            return;
+        }
+        if (timer) {
+            clearTimeout(timer);
+            timer = null;
+        }
+        if (releaseWait) {
+            const release = releaseWait;
+            releaseWait = null;
+            release();
+        }
+    }
+
+    async function showCachedSum(url, label) {
+        if (sumFrameLabel) {
+            sumFrameLabel.textContent = label || "";
+        }
+        const cached = cutoutCache.get(url);
+        if (!cached) {
+            return displaySumUrl(url, label);
+        }
+        if (sumBlobUrl) {
+            URL.revokeObjectURL(sumBlobUrl);
+        }
+        sumBlobUrl = URL.createObjectURL(cached);
+        sumCutout.src = sumBlobUrl;
+        sumCutout.classList.remove("d-none");
+        sumViewerMessage?.classList.add("d-none");
+        stripProcessSpin(sumViewerMessage);
+        return true;
+    }
+
+    async function playSumResults() {
+        if (sumLooping) {
+            stopSumLoop();
+            return;
+        }
+        if (!sumResultsReady) {
+            return;
+        }
+        const frames = selectedSumFrames();
+        if (!frames.length) {
+            return;
+        }
+        stop();
+        sumLooping = true;
+        const token = ++sumLoopToken;
+        setSumPlayIcon(true);
+        let index = cursor >= 0 && cursor < frames.length ? cursor : 0;
+        while (sumLooping && token === sumLoopToken) {
+            const current = selectedSumFrames();
+            if (!current.length) {
+                stopSumLoop();
+                return;
+            }
+            if (index >= current.length) {
+                index = 0;
+            }
+            const frame = current[index];
+            cursor = index;
+            highlight({follow: true, items: frame.items, sumIndex: frame.sumIndex});
+            setWavelength(wavelengthText(frame.items), sumWaveLabel);
+            await showCachedSum(frame.url, `${index + 1} / ${current.length}`);
+            if (!sumLooping || token !== sumLoopToken) {
+                return;
+            }
+            await wait(800);
+            if (!sumLooping || token !== sumLoopToken) {
+                return;
+            }
+            index += 1;
+        }
     }
 
     async function displaySumUrl(url, label) {
@@ -1635,6 +1754,9 @@
             stop();
             return;
         }
+        if (sumLooping) {
+            stopSumLoop();
+        }
         const frames = sequence();
         if (!frames.length) {
             message.textContent = emptySequenceMessage();
@@ -1662,7 +1784,7 @@
     document.getElementById("sum-prev")?.addEventListener("click", () => stepFrame(-1));
     document.getElementById("sum-next")?.addEventListener("click", () => stepFrame(1));
     playButton.addEventListener("click", play);
-    sumPlayButton?.addEventListener("click", play);
+    sumPlayButton?.addEventListener("click", playSumResults);
     function stepDetector(delta) {
         const options = [...detectorSelect.options];
         if (!options.length) {
@@ -1694,6 +1816,7 @@
         history.replaceState({}, "", url);
         updateCount();
         setFrameLabel("");
+        setWavelength("");
         cutout.classList.add("d-none");
         if (!viewer.dataset.ra) {
             return;
@@ -1789,6 +1912,7 @@
             sumViewerMessage.textContent = stackOp === "diff" ? messages.chooseDiff : messages.chooseSum;
             sumViewerMessage.classList.remove("d-none");
         }
+        setWavelength("", sumWaveLabel);
         sumResults?.classList.add("d-none");
     }
 
@@ -2293,6 +2417,7 @@
             return;
         }
         highlight({follow: true, items: frame.items, sumIndex: original});
+        setWavelength(wavelengthText(frame.items), sumWaveLabel);
         abortInflight();
         displaySumUrl(frame.url, "");
     });
@@ -2340,6 +2465,7 @@
             list.append(empty);
         }
         setFrameLabel("");
+        setWavelength("");
         cutout.classList.add("d-none");
         message.classList.remove("d-none");
         message.textContent = messages.chooseObservation;
