@@ -250,6 +250,7 @@
 
 {% block body %}
 {{ messages_json|json_script:"ui-messages" }}
+{{ example_objects_json|json_script:"example-objects" }}
 <nav class="navbar navbar-dark site-nav px-3">
     <a class="navbar-brand mb-0" id="site-home" href="{% url 'index' %}">SPHEREx</a>
     <div class="dropdown">
@@ -444,6 +445,7 @@
                  data-unit="{{ query.unit }}"
                  data-cutout-pattern="{% url 'cutout' 0 %}"
                  data-sum-pattern="{% url 'sum_cutout' %}"
+                 data-diff-pattern="{% url 'diff_cutout' %}"
                  {% endif %}>
                 <p id="viewer-message" class="m-3 text-center">
                     {% trans "Choose an observation or press play." %}
@@ -467,6 +469,9 @@
                 <button type="button" class="btn btn-outline-secondary btn-sm icon-btn" id="sum-open" aria-pressed="false" aria-label="{% trans "Sum" %}">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M352 128C352 110.3 337.7 96 320 96C302.3 96 288 110.3 288 128L288 288L128 288C110.3 288 96 302.3 96 320C96 337.7 110.3 352 128 352L288 352L288 512C288 529.7 302.3 544 320 544C337.7 544 352 529.7 352 512L352 352L512 352C529.7 352 544 337.7 544 320C544 302.3 529.7 288 512 288L352 288L352 128z"/></svg>
                 </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm icon-btn" id="diff-open" aria-pressed="false" aria-label="{% trans "Subtract" %}">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M96 320C96 302.3 110.3 288 128 288H512C529.7 288 544 302.3 544 320C544 337.7 529.7 352 512 352H128C110.3 352 96 337.7 96 320z"/></svg>
+                </button>
                 <span id="frame-label" class="small text-muted"></span>
             </div>
             <p id="sum-status" class="small text-muted d-none mb-0 mt-2"></p>
@@ -486,21 +491,37 @@
         </div>
         </div>
         <div id="sum-results" class="sum-results d-none">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <div class="d-flex align-items-center gap-2">
-                    <input class="form-check-input m-0" type="checkbox" id="select-all-sum" checked aria-label="{% trans "Select all" %}">
-                    <h2 class="h6 mb-0">{% trans "Sum results" %}</h2>
-                </div>
-                <span class="small text-muted" id="sum-result-count"></span>
-            </div>
             <div class="sky-layout">
                 <div class="sky-form">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <input class="form-check-input m-0" type="checkbox" id="select-all-sum" checked aria-label="{% trans "Select all" %}">
+                            <h2 class="h6 mb-0" id="sum-results-title">{% trans "Sum results" %}</h2>
+                        </div>
+                        <span class="small text-muted" id="sum-result-count"></span>
+                    </div>
                     <div class="list-group" id="sum-result-list"></div>
                 </div>
                 <div class="sky-stage">
                     <div id="sum-viewer" class="stage-frame rounded">
                         <p id="sum-viewer-message" class="m-3 text-center">{% trans "Choose a summed image." %}</p>
                         <img id="sum-cutout" class="d-none" alt="{% trans "SPHEREx cutout" %}">
+                    </div>
+                    <div class="stage-actions">
+                        <button type="button" class="btn btn-outline-secondary btn-sm icon-btn" id="sum-prev" aria-label="{% trans "Previous" %}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M491 100.8C478.1 93.8 462.3 94.5 450 102.6L192 272.1L192 128C192 110.3 177.7 96 160 96C142.3 96 128 110.3 128 128L128 512C128 529.7 142.3 544 160 544C177.7 544 192 529.7 192 512L192 367.9L450 537.5C462.3 545.6 478 546.3 491 539.3C504 532.3 512 518.8 512 504.1L512 136.1C512 121.4 503.9 107.9 491 100.9z"/></svg>
+                        </button>
+                        <button type="button" class="btn btn-outline-primary btn-sm icon-btn" id="sum-play" aria-label="{% trans "Play" %}">
+                            <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M187.2 100.9C174.8 94.1 159.8 94.4 147.6 101.6C135.4 108.8 128 121.9 128 136L128 504C128 518.1 135.5 531.2 147.6 538.4C159.7 545.6 174.8 545.9 187.2 539.1L523.2 355.1C536 348.1 544 334.6 544 320C544 305.4 536 291.9 523.2 284.9L187.2 100.9z"/></svg>
+                            <svg class="icon-pause d-none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" aria-hidden="true"><path d="M48 64C21.5 64 0 85.5 0 112V400c0 26.5 21.5 48 48 48h32c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48H48zm192 0c-26.5 0-48 21.5-48 48V400c0 26.5 21.5 48 48 48h32c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48h-32z"/></svg>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm icon-btn" id="sum-next" aria-label="{% trans "Next" %}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M149 100.8C161.9 93.8 177.7 94.5 190 102.6L448 272.1L448 128C448 110.3 462.3 96 480 96C497.7 96 512 110.3 512 128L512 512C512 529.7 497.7 544 480 544C462.3 544 448 529.7 448 512L448 367.9L190 537.5C177.7 545.6 162 546.3 149 539.3C136 532.3 128 518.7 128 504L128 136C128 121.3 136.1 107.8 149 100.8z"/></svg>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm icon-btn" id="sum-diff" aria-label="{% trans "Subtract" %}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M96 320C96 302.3 110.3 288 128 288H512C529.7 288 544 302.3 544 320C544 337.7 529.7 352 512 352H128C110.3 352 96 337.7 96 320z"/></svg>
+                        </button>
+                        <span id="sum-frame-label" class="small text-muted"></span>
                     </div>
                 </div>
             </div>
@@ -535,7 +556,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans "Close" %}"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted">
+                    <p class="small text-muted" id="sum-modal-help">
                         {% trans "Choose a detector group that shares the same observation. The next step lists those observations so you can keep only the dates you want." %}
                     </p>
                     <div id="sum-detector-choices" class="d-flex flex-column gap-2"></div>
@@ -556,7 +577,8 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans "Close" %}"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted">{% trans "Choose the observations to include. Each checked observation becomes one summed image. Confirm with none checked to keep every match." %}</p>
+                    <p class="small text-muted" id="sum-obs-help">{% trans "Choose the observations to include. Each checked observation becomes one summed image. Confirm with none checked to keep every match." %}</p>
+                    <p id="sum-obs-error" class="text-danger small d-none mb-2"></p>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0">
                             <thead>
@@ -631,12 +653,26 @@
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h2 class="modal-title h5" id="object-list-title">{% trans "Saved objects" %}</h2>
+                    <h2 class="modal-title h5" id="object-list-title">{% trans "Objects" %}</h2>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans "Close" %}"></button>
                 </div>
                 <div class="modal-body">
-                    <div id="object-items" data-edit="{% trans "Edit" %}" data-delete="{% trans "Delete" %}"></div>
-                    <p id="object-empty" class="text-muted small mb-0">{% trans "No saved objects yet." %}</p>
+                    <ul class="nav nav-tabs mb-3" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="tab-my-objects" type="button" data-object-tab="mine" role="tab" aria-selected="true">{% trans "My objects" %}</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-example-objects" type="button" data-object-tab="examples" role="tab" aria-selected="false">{% trans "Example objects" %}</button>
+                        </li>
+                    </ul>
+                    <div id="object-panel-mine">
+                        <div id="object-items" data-edit="{% trans "Edit" %}" data-delete="{% trans "Delete" %}"></div>
+                        <p id="object-empty" class="text-muted small mb-0">{% trans "No saved objects yet." %}</p>
+                    </div>
+                    <div id="object-panel-examples" class="d-none">
+                        <div id="example-items"></div>
+                        <p id="example-empty" class="text-muted small mb-0 d-none">{% trans "No example objects yet." %}</p>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-primary btn-sm me-auto" id="object-add">{% trans "Add object" %}</button>
@@ -675,12 +711,14 @@
     const visibleCount = document.getElementById("visible-count");
     const detectorSelect = document.getElementById("detector");
     const playButton = document.getElementById("play");
+    const sumPlayButton = document.getElementById("sum-play");
     const list = document.getElementById("result-list");
     const sumResults = document.getElementById("sum-results");
     const sumResultList = document.getElementById("sum-result-list");
     const sumResultCount = document.getElementById("sum-result-count");
     const sumCutout = document.getElementById("sum-cutout");
     const sumViewerMessage = document.getElementById("sum-viewer-message");
+    const sumFrameLabel = document.getElementById("sum-frame-label");
     let cursor = 0;
     let timer = null;
     let releaseWait = null;
@@ -689,6 +727,8 @@
     const inflight = new Map();
     const prefetchLimit = 2;
     let sumSequence = null;
+    let stackOp = null;
+    let pendingOp = "sum";
     let sumPlayStarted = false;
     let sumSeenUrls = new Set();
     let sumResultsReady = false;
@@ -898,6 +938,10 @@
         return `${viewer.dataset.sumPattern}?ids=${ids.join(",")}&${queryParams()}`;
     }
 
+    function diffUrl(before, after) {
+        return `${viewer.dataset.diffPattern}?before=${before.join(",")}&after=${after.join(",")}&${queryParams()}`;
+    }
+
     function allRows() {
         return [...list.querySelectorAll("[data-id]")];
     }
@@ -1041,7 +1085,11 @@
         });
     }
 
-    async function displayUrl(url, label) {
+    let mirrorSum = true;
+    let sumBlobUrl = null;
+
+    async function displayUrl(url, label, options = {}) {
+        mirrorSum = options.mirror !== false;
         const token = ++displayToken;
         const startedAt = performance.now();
         const warm = cutoutCache.has(url);
@@ -1050,7 +1098,7 @@
             startFrameLoad(startedAt);
         }
         message.classList.add("d-none");
-        frameLabel.textContent = label;
+        setFrameLabel(label);
         try {
             const blob = await fetchCutout(url);
             if (token !== displayToken) {
@@ -1071,7 +1119,9 @@
             }
             finishFrameLoad(true);
             setLoading(false);
-            syncSumCutout(blobUrl);
+            if (mirrorSum) {
+                syncSumCutout(blobUrl);
+            }
             noteSumFrame(url);
             return true;
         } catch (error) {
@@ -1110,7 +1160,7 @@
             message.textContent = emptySequenceMessage();
             message.classList.remove("d-none");
             cutout.classList.add("d-none");
-            frameLabel.textContent = "";
+            setFrameLabel("");
             if (!sumSequence && !visibleFrames().length) {
                 warnIfEmpty();
             }
@@ -1226,9 +1276,30 @@
     }
 
     function setPlayIcon(active) {
-        playButton.querySelector(".icon-play").classList.toggle("d-none", active);
-        playButton.querySelector(".icon-pause").classList.toggle("d-none", !active);
-        playButton.setAttribute("aria-label", active ? messages.pause : messages.play);
+        for (const button of [playButton, sumPlayButton]) {
+            if (!button) {
+                continue;
+            }
+            button.querySelector(".icon-play")?.classList.toggle("d-none", active);
+            button.querySelector(".icon-pause")?.classList.toggle("d-none", !active);
+            button.setAttribute("aria-label", active ? messages.pause : messages.play);
+        }
+    }
+
+    function stepFrame(delta) {
+        stop();
+        const frames = sequence();
+        if (!frames.length) {
+            return;
+        }
+        showFrame(cursor + delta, {follow: true});
+    }
+
+    function setFrameLabel(text) {
+        frameLabel.textContent = text;
+        if (sumFrameLabel) {
+            sumFrameLabel.textContent = text;
+        }
     }
 
     function formatDuration(ms) {
@@ -1330,10 +1401,13 @@
         }
         playing = true;
         setPlayIcon(true);
+        paintStackButton("diff-open", false);
         frameMs = null;
         if (sumSequence?.length) {
             sumPlayStarted = true;
-            setSumStatus(messages.sumPlaying.replace("%(count)s", String(sumSequence.length)));
+            setSumStatus(stackOp === "diff"
+                ? messages.diffPlaying
+                : messages.sumPlaying.replace("%(count)s", String(sumSequence.length)));
         }
         armCountdown(0, frames.length);
         countdownTimer = setInterval(paintCountdown, 250);
@@ -1341,23 +1415,12 @@
         playLoop();
     }
 
-    document.getElementById("prev").addEventListener("click", () => {
-        stop();
-        const frames = sequence();
-        if (!frames.length) {
-            return;
-        }
-        showFrame(cursor - 1, {follow: true});
-    });
-    document.getElementById("next").addEventListener("click", () => {
-        stop();
-        const frames = sequence();
-        if (!frames.length) {
-            return;
-        }
-        showFrame(cursor + 1, {follow: true});
-    });
+    document.getElementById("prev").addEventListener("click", () => stepFrame(-1));
+    document.getElementById("next").addEventListener("click", () => stepFrame(1));
+    document.getElementById("sum-prev")?.addEventListener("click", () => stepFrame(-1));
+    document.getElementById("sum-next")?.addEventListener("click", () => stepFrame(1));
     playButton.addEventListener("click", play);
+    sumPlayButton?.addEventListener("click", play);
     detectorSelect.addEventListener("change", () => {
         stop();
         cursor = 0;
@@ -1369,7 +1432,7 @@
         url.searchParams.set("detector", detectorSelect.value);
         history.replaceState({}, "", url);
         updateCount();
-        frameLabel.textContent = "";
+        setFrameLabel("");
         cutout.classList.add("d-none");
         if (!viewer.dataset.ra) {
             return;
@@ -1432,7 +1495,7 @@
             sumCutout.classList.add("d-none");
         }
         if (sumViewerMessage) {
-            sumViewerMessage.textContent = messages.chooseSum;
+            sumViewerMessage.textContent = stackOp === "diff" ? messages.chooseDiff : messages.chooseSum;
             sumViewerMessage.classList.remove("d-none");
         }
         sumResults?.classList.add("d-none");
@@ -1463,7 +1526,10 @@
         }
         sumResultsReady = true;
         sumResultList.replaceChildren();
-        const detectorLabel = messages.sumDetectors.replace("%(list)s", sumDetectorsList().join(", "));
+        const detectors = sumDetectorsList();
+        const detectorLabel = detectors.length === 1
+            ? messages.detectorNumber.replace("%(number)s", detectors[0])
+            : messages.sumDetectors.replace("%(list)s", detectors.join(", "));
         sumSequence.forEach((frame) => {
             const row = document.createElement("div");
             row.className = "list-group-item list-group-item-action d-flex align-items-start gap-2";
@@ -1489,10 +1555,17 @@
             row.append(box, button);
             sumResultList.append(row);
         });
-        if (sumResultCount) {
-            sumResultCount.textContent = messages.sumCount.replace("%(count)s", String(sumSequence.length));
+        const countMessage = stackOp === "diff"
+            ? (sumSequence.length === 1 ? messages.diffOne : messages.diffCount)
+            : messages.sumCount;
+        const title = document.getElementById("sum-results-title");
+        if (title) {
+            title.textContent = stackOp === "diff" ? messages.diffResults : messages.sumResults;
         }
-        setSumStatus(messages.sumCount.replace("%(count)s", String(sumSequence.length)));
+        if (sumResultCount) {
+            sumResultCount.textContent = countMessage.replace("%(count)s", String(sumSequence.length));
+        }
+        setSumStatus(countMessage.replace("%(count)s", String(sumSequence.length)));
         syncSelectAllSum();
         sumResults.classList.remove("d-none");
         if (cursor >= sequence().length) {
@@ -1505,26 +1578,35 @@
         sumResults.scrollIntoView({behavior: "smooth", block: "nearest"});
     }
 
-    function setSumMode(frames) {
-        const button = document.getElementById("sum-open");
+    function paintStackButton(id, active) {
+        const button = document.getElementById(id);
+        button?.classList.toggle("btn-primary", active);
+        button?.classList.toggle("btn-outline-secondary", !active);
+        button?.setAttribute("aria-pressed", active ? "true" : "false");
+    }
+
+    function setSumMode(frames, op = null) {
         if (frames?.length) {
             frames.forEach((frame, index) => {
                 frame.sumIndex = index;
             });
             sumSequence = frames;
+            stackOp = op || stackOp || "sum";
         } else {
             sumSequence = null;
+            stackOp = null;
         }
         const active = Boolean(sumSequence?.length);
-        button?.classList.toggle("btn-primary", active);
-        button?.classList.toggle("btn-outline-secondary", !active);
-        button?.setAttribute("aria-pressed", active ? "true" : "false");
+        paintStackButton("sum-open", active && stackOp === "sum");
+        paintStackButton("diff-open", active && stackOp === "diff");
         hideSumResults();
         if (!active) {
             setSumStatus("");
             return;
         }
-        setSumStatus(messages.sumReady.replace("%(count)s", String(sumSequence.length)));
+        setSumStatus(stackOp === "diff"
+            ? messages.diffReady
+            : messages.sumReady.replace("%(count)s", String(sumSequence.length)));
     }
 
     function showSumError(text) {
@@ -1563,13 +1645,142 @@
         return [...groups.values()];
     }
 
-    function openSumModal() {
+    function singleDetectorChoices() {
+        const byDetector = new Map();
+        allRows().forEach((row) => {
+            const detector = row.dataset.detector;
+            const key = obsKey(row);
+            if (!detector || !row.dataset.obsId) {
+                return;
+            }
+            if (!byDetector.has(detector)) {
+                byDetector.set(detector, new Map());
+            }
+            const bundles = byDetector.get(detector);
+            if (!bundles.has(key)) {
+                bundles.set(key, []);
+            }
+            bundles.get(key).push(row);
+        });
+        return [...byDetector.entries()]
+            .map(([detector, bundles]) => ({
+                signature: detector,
+                detectors: [detector],
+                bundles: [...bundles.values()],
+            }))
+            .filter((group) => group.bundles.length >= 2)
+            .sort((left, right) => Number(left.signature) - Number(right.signature));
+    }
+
+    function stackChoices() {
+        return sumGroupChoices();
+    }
+
+    function orderedPair(items, dateOf) {
+        return [...items].sort((left, right) => dateOf(left).localeCompare(dateOf(right)));
+    }
+
+    function subtractCheckedObservations() {
+        stop();
+        const chosen = selectedFrames();
+        if (chosen.length !== 2) {
+            message.textContent = messages.diffNeed;
+            message.classList.remove("d-none");
+            cutout.classList.add("d-none");
+            return;
+        }
+        const [earlier, later] = orderedPair(chosen, (row) => row.dataset.date || "");
+        paintStackButton("diff-open", true);
+        setSumStatus(messages.diffPlaying);
+        displayUrl(
+            diffUrl([earlier.dataset.id], [later.dataset.id]),
+            `${earlier.dataset.date || ""} − ${later.dataset.date || ""}`,
+            {mirror: false},
+        ).then((ok) => {
+            if (ok) {
+                setSumStatus(messages.diffOne);
+            }
+        });
+    }
+
+    async function subtractCheckedSums() {
+        stop();
+        const chosen = selectedSumFrames();
+        if (chosen.length !== 2) {
+            if (sumViewerMessage) {
+                sumViewerMessage.textContent = messages.diffNeedSums;
+                sumViewerMessage.classList.remove("d-none");
+            }
+            sumCutout?.classList.add("d-none");
+            return;
+        }
+        const [earlier, later] = orderedPair(chosen, (frame) => frame.date || "");
+        const url = diffUrl(
+            earlier.items.map((row) => row.dataset.id),
+            later.items.map((row) => row.dataset.id),
+        );
+        if (sumViewerMessage) {
+            sumViewerMessage.textContent = messages.diffPlaying;
+            sumViewerMessage.classList.remove("d-none");
+        }
+        if (sumFrameLabel) {
+            sumFrameLabel.textContent = `${earlier.date || ""} − ${later.date || ""}`;
+        }
+        paintStackButton("sum-diff", true);
+        try {
+            const blob = await fetchCutout(url);
+            if (sumBlobUrl) {
+                URL.revokeObjectURL(sumBlobUrl);
+            }
+            sumBlobUrl = URL.createObjectURL(blob);
+            sumCutout.src = sumBlobUrl;
+            sumCutout.classList.remove("d-none");
+            sumViewerMessage?.classList.add("d-none");
+        } catch (error) {
+            if (error?.name === "AbortError") {
+                return;
+            }
+            if (sumViewerMessage) {
+                sumViewerMessage.textContent = error?.name === "CutoutError" ? error.message : messages.cutoutLoadFailed;
+                sumViewerMessage.classList.remove("d-none");
+            }
+            sumCutout?.classList.add("d-none");
+        }
+    }
+
+    function showObsError(text) {
+        const error = document.getElementById("sum-obs-error");
+        if (!error) {
+            return;
+        }
+        error.textContent = text || "";
+        error.classList.toggle("d-none", !text);
+    }
+
+    function openSumModal(op) {
+        pendingOp = op;
         const choices = document.getElementById("sum-detector-choices");
         if (!choices) {
             return;
         }
-        const groups = sumGroupChoices();
-        const current = sumDetectorsList().join(",");
+        const title = document.getElementById("sum-title");
+        const help = document.getElementById("sum-modal-help");
+        if (title && !title.dataset.sum) {
+            title.dataset.sum = title.textContent;
+        }
+        if (help && !help.dataset.sum) {
+            help.dataset.sum = help.textContent.trim();
+        }
+        if (title) {
+            title.textContent = op === "diff" ? messages.diff : title.dataset.sum;
+        }
+        if (help) {
+            help.textContent = op === "diff" ? messages.diffHelp : help.dataset.sum;
+        }
+        const groups = stackChoices();
+        const sameOp = (op === "diff" && document.getElementById("diff-open")?.getAttribute("aria-pressed") === "true")
+            || (op === "sum" && document.getElementById("sum-open")?.getAttribute("aria-pressed") === "true");
+        const current = sameOp ? sumDetectorsList().join(",") : "";
         choices.replaceChildren();
         groups.forEach((group, index) => {
             const wrap = document.createElement("div");
@@ -1584,13 +1795,17 @@
             const label = document.createElement("label");
             label.className = "form-check-label";
             label.htmlFor = input.id;
-            label.textContent = messages.sumGroup
-                .replace("%(list)s", group.detectors.join(", "))
-                .replace("%(count)s", String(group.bundles.length));
+            label.textContent = group.detectors.length === 1
+                ? messages.diffGroup
+                    .replace("%(number)s", group.detectors[0])
+                    .replace("%(count)s", String(group.bundles.length))
+                : messages.sumGroup
+                    .replace("%(list)s", group.detectors.join(", "))
+                    .replace("%(count)s", String(group.bundles.length));
             wrap.append(input, label);
             choices.append(wrap);
         });
-        showSumError(groups.length ? "" : messages.sumNoGroup);
+        showSumError(groups.length ? "" : (op === "diff" ? messages.diffNone : messages.sumNoGroup));
         bootstrap.Modal.getOrCreateInstance(document.getElementById("sum-modal")).show();
     }
 
@@ -1598,10 +1813,19 @@
         pendingSumGroup = group;
         const body = document.getElementById("sum-obs-rows");
         const all = document.getElementById("sum-obs-all");
+        const help = document.getElementById("sum-obs-help");
         body.replaceChildren();
+        showObsError("");
+        if (help) {
+            if (!help.dataset.sum) {
+                help.dataset.sum = help.textContent.trim();
+            }
+            help.textContent = pendingOp === "diff" ? messages.diffPick : help.dataset.sum;
+        }
         if (all) {
-            all.checked = true;
+            all.checked = pendingOp !== "diff";
             all.indeterminate = false;
+            all.closest("th")?.classList.toggle("d-none", pendingOp === "diff");
         }
         group.bundles.forEach((rows, index) => {
             const sample = rows[0];
@@ -1610,7 +1834,7 @@
             const box = document.createElement("input");
             box.type = "checkbox";
             box.className = "form-check-input sum-obs-check";
-            box.checked = true;
+            box.checked = pendingOp !== "diff";
             box.dataset.index = String(index);
             box.setAttribute("aria-label", messages.selectObservation);
             checkCell.append(box);
@@ -1629,12 +1853,19 @@
 
     function applySum() {
         const selected = document.querySelector("#sum-detector-choices input:checked");
-        const group = sumGroupChoices().find((item) => item.signature === selected?.value);
+        const group = stackChoices().find((item) => item.signature === selected?.value);
         if (!group) {
-            showSumError(messages.sumNoGroup);
+            showSumError(pendingOp === "diff" ? messages.diffNone : messages.sumNoGroup);
             return;
         }
         openObservationPicker(group);
+    }
+
+    function membersOf(rows, detectors) {
+        const needed = new Set(detectors.map(String));
+        return rows
+            .filter((row) => needed.has(row.dataset.detector))
+            .sort((left, right) => Number(left.dataset.detector) - Number(right.dataset.detector));
     }
 
     function confirmSumObservations() {
@@ -1644,16 +1875,38 @@
         }
         const boxes = [...document.querySelectorAll(".sum-obs-check")];
         let indexes = boxes.filter((box) => box.checked).map((box) => Number(box.dataset.index));
+        if (pendingOp === "diff") {
+            if (indexes.length !== 2) {
+                showObsError(messages.diffNeed);
+                return;
+            }
+            const pair = indexes
+                .map((index) => group.bundles[index])
+                .sort((left, right) => (left[0].dataset.date || "").localeCompare(right[0].dataset.date || ""));
+            const sides = pair.map((rows) => membersOf(rows, group.detectors));
+            if (sides.some((members) => members.length !== group.detectors.length)) {
+                showObsError(messages.diffNeed);
+                return;
+            }
+            const [earlier, later] = sides;
+            const frames = [{
+                items: [...earlier, ...later],
+                url: diffUrl(earlier.map((row) => row.dataset.id), later.map((row) => row.dataset.id)),
+                detectors: group.detectors,
+                date: `${earlier[0].dataset.date || ""} − ${later[0].dataset.date || ""}`,
+                obsId: `${earlier[0].dataset.obsId || ""} − ${later[0].dataset.obsId || ""}`,
+                collection: [earlier[0].dataset.collection, later[0].dataset.collection].filter(Boolean).join(" − "),
+            }];
+            finishStack(frames, "diff");
+            return;
+        }
         if (!indexes.length) {
             indexes = group.bundles.map((_rows, index) => index);
         }
-        const needed = new Set(group.detectors.map(String));
         const frames = indexes.map((index) => {
             const rows = group.bundles[index];
+            const members = membersOf(rows, group.detectors);
             const sample = rows[0];
-            const members = rows
-                .filter((row) => needed.has(row.dataset.detector))
-                .sort((left, right) => Number(left.dataset.detector) - Number(right.dataset.detector));
             return {
                 items: members,
                 url: sumUrl(members.map((row) => row.dataset.id)),
@@ -1662,8 +1915,12 @@
                 obsId: sample.dataset.obsId || "",
                 collection: sample.dataset.collection || "",
             };
-        }).filter((frame) => frame.items.length === needed.size);
-        const keys = new Set(frames.map((frame) => obsKey(frame.items[0])));
+        }).filter((frame) => frame.items.length === group.detectors.length);
+        finishStack(frames, "sum");
+    }
+
+    function finishStack(frames, op) {
+        const keys = new Set(frames.flatMap((frame) => frame.items.map((row) => obsKey(row))));
         allRows().forEach((row) => {
             const box = row.querySelector(".obs-check");
             if (box) {
@@ -1672,18 +1929,36 @@
         });
         syncSelectAll();
         cursor = 0;
-        setSumMode(frames);
+        setSumMode(frames, op);
         bootstrap.Modal.getOrCreateInstance(document.getElementById("sum-obs-modal")).hide();
         highlight();
     }
 
-    document.getElementById("sum-open")?.addEventListener("click", openSumModal);
+    document.getElementById("sum-open")?.addEventListener("click", () => openSumModal("sum"));
+    document.getElementById("diff-open")?.addEventListener("click", subtractCheckedObservations);
+    document.getElementById("sum-diff")?.addEventListener("click", subtractCheckedSums);
     document.getElementById("sum-apply")?.addEventListener("click", applySum);
     document.getElementById("sum-obs-confirm")?.addEventListener("click", confirmSumObservations);
     document.getElementById("sum-obs-all")?.addEventListener("change", (event) => {
+        if (pendingOp === "diff") {
+            event.target.checked = false;
+            return;
+        }
         document.querySelectorAll(".sum-obs-check").forEach((box) => {
             box.checked = event.target.checked;
         });
+    });
+    document.getElementById("sum-obs-rows")?.addEventListener("change", (event) => {
+        if (pendingOp !== "diff" || !event.target.classList.contains("sum-obs-check")) {
+            return;
+        }
+        const checked = [...document.querySelectorAll(".sum-obs-check:checked")];
+        if (checked.length > 2) {
+            event.target.checked = false;
+            showObsError(messages.diffMax);
+            return;
+        }
+        showObsError("");
     });
     document.getElementById("select-all-sum")?.addEventListener("change", (event) => {
         sumResultList?.querySelectorAll(".sum-check").forEach((box) => {
@@ -1759,7 +2034,7 @@
             empty.textContent = messages.noResults;
             list.append(empty);
         }
-        frameLabel.textContent = "";
+        setFrameLabel("");
         cutout.classList.add("d-none");
         message.classList.remove("d-none");
         message.textContent = messages.chooseObservation;
@@ -2043,9 +2318,46 @@
     const objectUnit = document.getElementById("object-unit");
     const objectError = document.getElementById("object-error");
     const objectItems = document.getElementById("object-items");
+    const exampleItems = document.getElementById("example-items");
+    const objectAdd = document.getElementById("object-add");
     const objectTitle = document.getElementById("save-object-title");
+    const exampleObjects = (() => {
+        const node = document.getElementById("example-objects");
+        if (!node) {
+            return [];
+        }
+        try {
+            const parsed = JSON.parse(node.textContent);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            return [];
+        }
+    })();
     let editingId = null;
     let returnToList = false;
+    let objectTab = "mine";
+
+    function unitLabel(unit) {
+        const option = objectUnit.querySelector(`option[value="${unit}"]`);
+        return option ? option.textContent : unit;
+    }
+
+    function setObjectTab(tab) {
+        objectTab = tab === "examples" ? "examples" : "mine";
+        const mine = objectTab === "mine";
+        document.getElementById("object-panel-mine")?.classList.toggle("d-none", !mine);
+        document.getElementById("object-panel-examples")?.classList.toggle("d-none", mine);
+        document.getElementById("tab-my-objects")?.classList.toggle("active", mine);
+        document.getElementById("tab-example-objects")?.classList.toggle("active", !mine);
+        document.getElementById("tab-my-objects")?.setAttribute("aria-selected", mine ? "true" : "false");
+        document.getElementById("tab-example-objects")?.setAttribute("aria-selected", mine ? "false" : "true");
+        objectAdd?.classList.toggle("d-none", !mine);
+        if (mine) {
+            renderList();
+        } else {
+            renderExamples();
+        }
+    }
 
     function readObjects() {
         const prefix = `${OBJECT_COOKIE}=`;
@@ -2180,10 +2492,38 @@
             head.append(load, actions);
             const meta = document.createElement("div");
             meta.className = "small text-muted mt-1";
-            const unit = objectUnit.querySelector(`option[value="${item.unit}"]`);
-            meta.textContent = `${item.ra} · ${item.dec} · ${item.fov} ${unit ? unit.textContent : item.unit}`;
+            meta.textContent = `${item.ra} · ${item.dec} · ${item.fov} ${unitLabel(item.unit)}`;
             row.append(head, meta);
             objectItems.append(row);
+        }
+    }
+
+    function renderExamples() {
+        if (!exampleItems) {
+            return;
+        }
+        exampleItems.replaceChildren();
+        document.getElementById("example-empty")?.classList.toggle("d-none", exampleObjects.length > 0);
+        for (const item of exampleObjects) {
+            const row = document.createElement("div");
+            row.className = "border rounded p-2 mb-2";
+            row.dataset.id = item.id;
+            const load = document.createElement("button");
+            load.type = "button";
+            load.className = "btn btn-link p-0 text-start";
+            load.dataset.action = "load-example";
+            load.textContent = item.name;
+            const meta = document.createElement("div");
+            meta.className = "small text-muted mt-1";
+            meta.textContent = `${item.ra} · ${item.dec} · ${item.fov} ${unitLabel(item.unit)}`;
+            row.append(load, meta);
+            if (item.description) {
+                const note = document.createElement("p");
+                note.className = "small mb-0 mt-1";
+                note.textContent = item.description;
+                row.append(note);
+            }
+            exampleItems.append(row);
         }
     }
 
@@ -2251,10 +2591,13 @@
     document.getElementById("save-object").addEventListener("click", () => openEditor());
     document.getElementById("object-confirm").addEventListener("click", confirmSave);
     document.getElementById("open-object-list").addEventListener("click", () => {
-        renderList();
+        setObjectTab("mine");
         listModal.show();
     });
-    document.getElementById("object-add").addEventListener("click", () => openEditor({fromList: true}));
+    objectAdd?.addEventListener("click", () => openEditor({fromList: true}));
+    listModalEl.querySelectorAll("[data-object-tab]").forEach((button) => {
+        button.addEventListener("click", () => setObjectTab(button.dataset.objectTab));
+    });
     objectItems.addEventListener("click", (event) => {
         const button = event.target.closest("[data-action]");
         if (!button) {
@@ -2273,6 +2616,19 @@
         }
         if (button.dataset.action === "edit") {
             openEditor({item, fromList: true});
+            return;
+        }
+        applyToForm(item);
+        listModal.hide();
+    });
+    exampleItems?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-action='load-example']");
+        if (!button) {
+            return;
+        }
+        const row = button.closest("[data-id]");
+        const item = exampleObjects.find((stored) => stored.id === row?.dataset.id);
+        if (!item) {
             return;
         }
         applyToForm(item);

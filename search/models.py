@@ -20,6 +20,31 @@ class SpherexCollection(models.Model):
         return self.name
 
 
+class ExampleSkyObject(models.Model):
+    name = models.CharField(max_length=80)
+    description = models.TextField(blank=True, default="")
+    ra = models.CharField(max_length=50)
+    dec = models.CharField(max_length=50)
+    fov = models.FloatField(default=60)
+    unit = models.CharField(
+        max_length=6,
+        choices=(
+            ("arcsec", "Arcseconds"),
+            ("arcmin", "Arcminutes"),
+            ("deg", "Degrees"),
+        ),
+        default="arcsec",
+    )
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
 class SpherexImage(models.Model):
     obs_id = models.CharField(max_length=255)
     access_url = models.URLField(max_length=1000, unique=True)

@@ -9,7 +9,7 @@ from django.utils.translation import gettext as _
 from django.utils.translation import ngettext
 
 from .forms import CoordinateForm
-from .models import SpherexImage
+from .models import ExampleSkyObject, SpherexImage
 from . import services
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,23 @@ def index(request):
         "map_fov": _map_fov(form),
         "query": query,
         "messages_json": _js_messages(),
+        "example_objects_json": _example_objects(),
     })
+
+
+def _example_objects():
+    return [
+        {
+            "id": f"ex-{item.pk}",
+            "name": item.name,
+            "description": item.description,
+            "ra": item.ra,
+            "dec": item.dec,
+            "fov": f"{item.fov:g}",
+            "unit": item.unit,
+        }
+        for item in ExampleSkyObject.objects.filter(is_active=True)
+    ]
 
 
 def refresh(request):
@@ -119,24 +135,34 @@ def cutout(request, pk):
     return _png_response(path, pk)
 
 
-def sum_cutout(request):
+def _cutout_ids(raw, limit=6):
     try:
-        ids = [int(part) for part in request.GET.get("ids", "").split(",") if part.strip()]
+        ids = [int(part) for part in (raw or "").split(",") if part.strip()]
     except ValueError:
-        return HttpResponse(
-            _("Select at least one detector."),
-            status=400,
-            content_type="text/plain; charset=utf-8",
-        )
+        return None
     ids = list(dict.fromkeys(ids))
-    if not ids or len(ids) > 6:
-        return HttpResponse(
-            _("Select at least one detector."),
-            status=400,
-            content_type="text/plain; charset=utf-8",
-        )
+    if not ids or len(ids) > limit:
+        return None
+    return ids
+
+
+def _images_for_ids(ids):
     images = list(SpherexImage.objects.filter(pk__in=ids))
     if len(images) != len(ids):
+        return None
+    return images
+
+
+def sum_cutout(request):
+    ids = _cutout_ids(request.GET.get("ids", ""))
+    if ids is None:
+        return HttpResponse(
+            _("Select at least one detector."),
+            status=400,
+            content_type="text/plain; charset=utf-8",
+        )
+    images = _images_for_ids(ids)
+    if images is None:
         return HttpResponse(
             _("The cutout could not be generated."),
             status=404,
@@ -163,6 +189,47 @@ def sum_cutout(request):
             content_type="text/plain; charset=utf-8",
         )
     return _png_response(path, ids)
+
+
+def diff_cutout(request):
+    before_ids = _cutout_ids(request.GET.get("before", ""))
+    after_ids = _cutout_ids(request.GET.get("after", ""))
+    if before_ids is None or after_ids is None or set(before_ids) & set(after_ids):
+        return HttpResponse(
+            _("Choose exactly two observations."),
+            status=400,
+            content_type="text/plain; charset=utf-8",
+        )
+    before = _images_for_ids(before_ids)
+    after = _images_for_ids(after_ids)
+    if before is None or after is None:
+        return HttpResponse(
+            _("The cutout could not be generated."),
+            status=404,
+            content_type="text/plain; charset=utf-8",
+        )
+    try:
+        fov_arcsec = services.fov_to_arcsec(
+            request.GET.get("fov"),
+            request.GET.get("unit", "arcsec"),
+        )
+        path = services.cached_diff_cutout(
+            before,
+            after,
+            request.GET.get("ra", ""),
+            request.GET.get("dec", ""),
+            fov_arcsec,
+        )
+    except services.SearchError as exc:
+        return HttpResponse(str(exc), status=422, content_type="text/plain; charset=utf-8")
+    except Exception:
+        logger.exception("Could not subtract images %s - %s", after_ids, before_ids)
+        return HttpResponse(
+            _("The cutout could not be generated."),
+            status=502,
+            content_type="text/plain; charset=utf-8",
+        )
+    return _png_response(path, (before_ids, after_ids))
 
 
 def _png_response(path, label):
@@ -357,6 +424,7 @@ def _submitted_query(form):
 
 
 def _js_messages():
+    """Strings the playback script reads from #ui-messages."""
     return {
         "searchFirst": _("Search a sky position to play the sequence."),
         "noDetector": _("No observations for this detector."),
@@ -384,8 +452,23 @@ def _js_messages():
         "sumGroup": _("Detectors %(list)s · %(count)s observations"),
         "sumDetectors": _("Detectors %(list)s"),
         "sumCount": _("%(count)s summed images"),
+        "sumResults": _("Sum results"),
         "chooseSum": _("Choose a summed image."),
         "sumPick": _("Choose the observations to include. Each checked observation becomes one summed image. Confirm with none checked to keep every match."),
         "sumNoGroup": _("No observation has more than one detector to sum."),
+        "diff": _("Subtract"),
+        "diffHelp": _("Choose one detector or a detector group. The next step asks for exactly two dates. The later epoch is subtracted from the earlier one."),
+        "diffPick": _("Choose exactly two observations. The later one is subtracted from the earlier one, on the same sky grid."),
+        "diffMax": _("Only two observations can be subtracted."),
+        "diffNeed": _("Choose exactly two observations of this detector."),
+        "diffNeedSums": _("Choose exactly two summed images."),
+        "diffReady": _("Two observations ready to subtract. Press play."),
+        "diffPlaying": _("Subtracting the later observation from the earlier one."),
+        "diffCount": _("%(count)s subtracted images"),
+        "diffOne": _("1 subtracted image"),
+        "diffResults": _("Subtraction results"),
+        "diffGroup": _("Detector %(number)s · %(count)s observations"),
+        "diffNone": _("No detector has two observations to subtract."),
+        "chooseDiff": _("Choose a subtracted image."),
         "confirm": _("Confirm"),
     }

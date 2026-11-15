@@ -339,16 +339,77 @@ def cached_sum_cutout(images, ra, dec, fov_arcsec):
 
 def render_sum_cutout(images, coord, fov_arcsec):
     """Add one detector at a time so a sum frame keeps a single FITS in memory."""
+    combined = _combined_plane(images, coord, fov_arcsec)
+    if combined is None:
+        raise SearchError(_("This observation does not cover the requested position."))
+    return _stretch_to_png(combined, oriented=True)
+
+
+def cached_diff_cutout(before, after, ra, dec, fov_arcsec):
+    """Later epoch minus earlier epoch. Each side may be one detector or one sum."""
+    coord = parse_coordinates(ra, dec)
+    identity = f"{_side_identity(before)}__{_side_identity(after)}"
+    path = _diff_cache_path(identity, coord.ra.deg, coord.dec.deg, fov_arcsec)
+    if path.exists() and path.stat().st_size > 0:
+        return path
+
+    key = _cutout_object_key(path.name)
+    if _restore_cutout(key, path):
+        return path
+
+    png = render_diff_cutout(before, after, coord, fov_arcsec)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".part")
+    png.save(temporary, format="PNG")
+    temporary.replace(path)
+    if path.stat().st_size <= 0:
+        path.unlink(missing_ok=True)
+        raise SearchError(_("The cutout was empty."))
+    _store_cutout(key, path)
+    return path
+
+
+def render_diff_cutout(before, after, coord, fov_arcsec):
+    """Project both epochs on the north-up grid and subtract earlier from later."""
+    earlier = _combined_plane(before, coord, fov_arcsec)
+    later = _combined_plane(after, coord, fov_arcsec)
+    if earlier is None or later is None:
+        raise SearchError(_("This observation does not cover the requested position."))
+    return _stretch_to_png(_subtract_planes(earlier, later), oriented=True)
+
+
+def _combined_plane(images, coord, fov_arcsec):
     planes = []
     for image in images:
         try:
             planes.append(_flux_plane(image, coord, fov_arcsec))
         except SearchError:
-            logger.info("Detector %s does not cover the sum position", getattr(image, "detector", None))
+            logger.info("Detector %s does not cover the position", getattr(image, "detector", None))
             continue
     if not planes:
-        raise SearchError(_("This observation does not cover the requested position."))
-    return _stretch_to_png(_combine_planes(planes), oriented=True)
+        return None
+    return _combine_planes(planes)
+
+
+def _side_identity(images):
+    ordered = sorted(images, key=lambda image: (image.detector or 0, image.pk))
+    return "-".join(str(image.pk) for image in ordered)
+
+
+def _diff_cache_path(identity, ra_deg, dec_deg, fov_arcsec):
+    name = f"diff_v1_{identity}_{ra_deg:.5f}_{dec_deg:.5f}_{float(fov_arcsec):.2f}.png"
+    return Path(settings.MEDIA_ROOT) / "cutouts" / name
+
+
+def _subtract_planes(earlier, later):
+    reference = np.asarray(earlier, dtype=np.float64)
+    other = np.asarray(later, dtype=np.float64)
+    if other.shape != reference.shape:
+        other = _resample_nearest(other, reference.shape)
+    covered = np.isfinite(reference) & np.isfinite(other)
+    difference = np.full(reference.shape, np.nan, dtype=np.float64)
+    difference[covered] = other[covered] - reference[covered]
+    return difference
 
 
 def _flux_plane(image, coord, fov_arcsec):

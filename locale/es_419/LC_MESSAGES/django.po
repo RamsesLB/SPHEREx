@@ -150,6 +150,48 @@ msgstr "Detectores %(list)s · %(count)s observaciones"
 msgid "Sum results"
 msgstr "Resultados de suma"
 
+msgid "Subtract"
+msgstr "Restar"
+
+msgid "Choose one detector or a detector group. The next step asks for exactly two dates. The later epoch is subtracted from the earlier one."
+msgstr "Elige un detector o un grupo de detectores. El paso siguiente pide exactamente dos fechas. La época más reciente se resta de la más antigua."
+
+msgid "Choose exactly two observations. The later one is subtracted from the earlier one, on the same sky grid."
+msgstr "Elige exactamente dos observaciones. La más reciente se resta de la más antigua, sobre la misma grilla del cielo."
+
+msgid "Only two observations can be subtracted."
+msgstr "Solo se pueden restar dos observaciones."
+
+msgid "Choose exactly two observations of this detector."
+msgstr "Elige exactamente dos observaciones de este detector."
+
+msgid "Choose exactly two summed images."
+msgstr "Elige exactamente dos imágenes sumadas."
+
+msgid "Two observations ready to subtract. Press play."
+msgstr "Dos observaciones listas para restar. Presiona reproducir."
+
+msgid "Subtracting the later observation from the earlier one."
+msgstr "Restando la observación más reciente de la más antigua."
+
+msgid "%(count)s subtracted images"
+msgstr "%(count)s imágenes restadas"
+
+msgid "1 subtracted image"
+msgstr "1 imagen restada"
+
+msgid "Subtraction results"
+msgstr "Resultados de resta"
+
+msgid "Detector %(number)s · %(count)s observations"
+msgstr "Detector %(number)s · %(count)s observaciones"
+
+msgid "No detector has two observations to subtract."
+msgstr "Ningún detector tiene dos observaciones para restar."
+
+msgid "Choose a subtracted image."
+msgstr "Elige una imagen restada."
+
 msgid "%(count)s summed images"
 msgstr "%(count)s imágenes sumadas"
 
@@ -305,6 +347,15 @@ msgstr "Objetos"
 
 msgid "Saved objects"
 msgstr "Objetos guardados"
+
+msgid "My objects"
+msgstr "Mis objetos"
+
+msgid "Example objects"
+msgstr "Objetos de ejemplo"
+
+msgid "No example objects yet."
+msgstr "Todavía no hay objetos de ejemplo."
 
 msgid "Name"
 msgstr "Nombre"

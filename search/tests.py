@@ -406,6 +406,29 @@ class SumViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+class DiffCutoutTests(SimpleTestCase):
+    def test_subtract_keeps_only_pixels_in_both_epochs(self):
+        difference = services._subtract_planes(
+            np.array([[5.0, np.nan]]),
+            np.array([[8.0, 4.0]]),
+        )
+        self.assertEqual(difference[0, 0], 3.0)
+        self.assertTrue(np.isnan(difference[0, 1]))
+
+    def test_render_subtracts_the_later_plane(self):
+        earlier = SimpleNamespace(pk=1, detector=2)
+        later = SimpleNamespace(pk=2, detector=2)
+
+        def fake_plane(image, coord, fov_arcsec):
+            return np.array([[1.0, 4.0]]) if image.pk == 1 else np.array([[9.0, 4.0]])
+
+        with patch("search.services._flux_plane", fake_plane):
+            png = services.render_diff_cutout([earlier], [later], SkyCoord(10, 0, unit="deg"), 60)
+        self.assertEqual(png.mode, "L")
+        pixels = list(png.getdata())
+        self.assertGreater(pixels[0], pixels[1])
+
+
 class CollectionLabelTests(SimpleTestCase):
     def test_data_release_labels(self):
         self.assertEqual(str(services.collection_label("spherex_dr1")), "Data Release 1")

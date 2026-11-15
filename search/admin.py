@@ -1,12 +1,20 @@
 from django.contrib import admin
 
-from .models import ImageTest, SpherexCollection, SpherexImage
+from .models import ExampleSkyObject, ImageTest, SpherexCollection, SpherexImage
 
 
 @admin.register(ImageTest)
 class ImageTestAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "img")
     search_fields = ("name",)
+
+
+@admin.register(ExampleSkyObject)
+class ExampleSkyObjectAdmin(admin.ModelAdmin):
+    list_display = ("name", "ra", "dec", "fov", "unit", "sort_order", "is_active")
+    list_editable = ("sort_order", "is_active")
+    search_fields = ("name", "description", "ra", "dec")
+    list_filter = ("unit", "is_active")
 
 
 @admin.register(SpherexCollection)
