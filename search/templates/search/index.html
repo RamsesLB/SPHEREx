@@ -58,6 +58,14 @@
         opacity: 1;
     }
     .icon-btn svg { width: 0.95rem; height: 0.95rem; fill: currentColor; display: block; }
+    .process-spin {
+        width: 0.75rem;
+        height: 0.75rem;
+        border-width: 0.12em;
+        margin-right: 0.4rem;
+        vertical-align: -0.125em;
+        flex: 0 0 auto;
+    }
     .stage-frame {
         width: min(calc(var(--stage-h) * 1.22), calc(100vw - 32rem));
         height: var(--stage-h);
@@ -452,6 +460,7 @@
                 </p>
                 <img id="cutout" class="d-none" alt="{% trans "SPHEREx cutout" %}">
                 <div id="loading" class="d-none position-absolute top-0 start-0 w-100 h-100 align-items-center justify-content-center" style="background: rgba(0,0,0,.45);">
+                    <span class="spinner-border process-spin" aria-hidden="true"></span>
                     <span>{% trans "Loading FITS…" %}</span>
                 </div>
             </div>
@@ -522,6 +531,23 @@
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M96 320C96 302.3 110.3 288 128 288H512C529.7 288 544 302.3 544 320C544 337.7 529.7 352 512 352H128C110.3 352 96 337.7 96 320z"/></svg>
                         </button>
                         <span id="sum-frame-label" class="small text-muted"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="diff-results" class="sum-results d-none">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h2 class="h6 mb-0">{% trans "Subtraction results" %}</h2>
+                <span class="small text-muted">{% trans "1 subtracted image" %}</span>
+            </div>
+            <div class="sky-layout">
+                <div class="sky-form">
+                    <div class="list-group" id="diff-result-list"></div>
+                </div>
+                <div class="sky-stage">
+                    <div id="diff-viewer" class="stage-frame rounded">
+                        <p id="diff-viewer-message" class="m-3 text-center">{% trans "Choose a subtracted image." %}</p>
+                        <img id="diff-cutout" class="d-none" alt="{% trans "SPHEREx cutout" %}">
                     </div>
                 </div>
             </div>
@@ -718,6 +744,10 @@
     const sumResultCount = document.getElementById("sum-result-count");
     const sumCutout = document.getElementById("sum-cutout");
     const sumViewerMessage = document.getElementById("sum-viewer-message");
+    const diffResults = document.getElementById("diff-results");
+    const diffResultList = document.getElementById("diff-result-list");
+    const diffCutout = document.getElementById("diff-cutout");
+    const diffViewerMessage = document.getElementById("diff-viewer-message");
     const sumFrameLabel = document.getElementById("sum-frame-label");
     let cursor = 0;
     let timer = null;
@@ -1119,10 +1149,6 @@
             }
             finishFrameLoad(true);
             setLoading(false);
-            if (mirrorSum) {
-                syncSumCutout(blobUrl);
-            }
-            noteSumFrame(url);
             return true;
         } catch (error) {
             if (token !== displayToken || error?.name === "AbortError") {
@@ -1177,7 +1203,12 @@
         } else {
             abortInflight();
         }
-        await displayUrl(frame.url, `${cursor + 1} / ${frames.length}`);
+        const label = `${cursor + 1} / ${frames.length}`;
+        if (sumSequence?.length) {
+            await displaySumUrl(frame.url, label);
+            return;
+        }
+        await displayUrl(frame.url, label);
     }
 
     function showClicked(item) {
@@ -1265,6 +1296,9 @@
         setPlayIcon(false);
         hideProgress();
         finishFrameLoad(false);
+        clearProcessSpin(document.getElementById("sum-status"));
+        clearProcessSpin(sumViewerMessage);
+        clearProcessSpin(diffViewerMessage);
     }
 
     function stopCountdown() {
@@ -1297,8 +1331,39 @@
 
     function setFrameLabel(text) {
         frameLabel.textContent = text;
+    }
+
+    async function displaySumUrl(url, label) {
         if (sumFrameLabel) {
-            sumFrameLabel.textContent = text;
+            sumFrameLabel.textContent = label || "";
+        }
+        setProcessMessage(
+            sumViewerMessage,
+            messages.sumPlaying.replace("%(count)s", String(selectedSumFrames().length || sumSequence?.length || 0)),
+            true,
+        );
+        try {
+            const blob = await fetchCutout(url);
+            if (sumBlobUrl) {
+                URL.revokeObjectURL(sumBlobUrl);
+            }
+            sumBlobUrl = URL.createObjectURL(blob);
+            sumCutout.src = sumBlobUrl;
+            sumCutout.classList.remove("d-none");
+            sumViewerMessage?.classList.add("d-none");
+            noteSumFrame(url);
+            return true;
+        } catch (error) {
+            if (error?.name === "AbortError") {
+                return false;
+            }
+            setProcessMessage(
+                sumViewerMessage,
+                error?.name === "CutoutError" ? error.message : messages.cutoutLoadFailed,
+                false,
+            );
+            sumCutout?.classList.add("d-none");
+            return false;
         }
     }
 
@@ -1342,14 +1407,14 @@
         bar.style.width = `${pct}%`;
         bar.parentElement.setAttribute("aria-valuenow", String(pct));
         if (anchor.remainingMs == null) {
-            label.textContent = messages.measuring;
+            setProcessMessage(label, messages.measuring, true);
             return;
         }
         const left = Math.max(0, anchor.remainingMs - (performance.now() - anchor.at));
-        label.textContent = messages.progress
+        setProcessMessage(label, messages.progress
             .replace("%(done)s", anchor.shown)
             .replace("%(total)s", anchor.total)
-            .replace("%(eta)s", formatDuration(left));
+            .replace("%(eta)s", formatDuration(left)), false);
     }
 
     function wait(ms) {
@@ -1405,9 +1470,8 @@
         frameMs = null;
         if (sumSequence?.length) {
             sumPlayStarted = true;
-            setSumStatus(stackOp === "diff"
-                ? messages.diffPlaying
-                : messages.sumPlaying.replace("%(count)s", String(sumSequence.length)));
+            revealSumResults();
+            setSumStatus(messages.sumPlaying.replace("%(count)s", String(selectedSumFrames().length || sumSequence.length)), true);
         }
         armCountdown(0, frames.length);
         countdownTimer = setInterval(paintCountdown, 250);
@@ -1471,13 +1535,39 @@
         return sumSequence?.[0]?.detectors || [];
     }
 
-    function setSumStatus(text) {
-        const status = document.getElementById("sum-status");
-        if (!status) {
+    function setProcessMessage(element, text, busy) {
+        if (!element) {
             return;
         }
-        status.textContent = text || "";
-        status.classList.toggle("d-none", !text);
+        const spinning = Boolean(element.querySelector(".process-spin"));
+        if (element.textContent === (text || "") && spinning === Boolean(busy)) {
+            element.classList.toggle("d-none", !text);
+            return;
+        }
+        element.replaceChildren();
+        if (!text) {
+            element.classList.add("d-none");
+            return;
+        }
+        if (busy) {
+            const icon = document.createElement("span");
+            icon.className = "spinner-border process-spin";
+            icon.setAttribute("aria-hidden", "true");
+            element.append(icon);
+        }
+        element.append(document.createTextNode(text));
+        element.classList.remove("d-none");
+    }
+
+    function clearProcessSpin(element) {
+        if (!element?.querySelector(".process-spin")) {
+            return;
+        }
+        element.textContent = element.textContent;
+    }
+
+    function setSumStatus(text, busy = false) {
+        setProcessMessage(document.getElementById("sum-status"), text, busy);
     }
 
     function hideSumResults() {
@@ -1555,12 +1645,10 @@
             row.append(box, button);
             sumResultList.append(row);
         });
-        const countMessage = stackOp === "diff"
-            ? (sumSequence.length === 1 ? messages.diffOne : messages.diffCount)
-            : messages.sumCount;
+        const countMessage = messages.sumCount;
         const title = document.getElementById("sum-results-title");
         if (title) {
-            title.textContent = stackOp === "diff" ? messages.diffResults : messages.sumResults;
+            title.textContent = messages.sumResults;
         }
         if (sumResultCount) {
             sumResultCount.textContent = countMessage.replace("%(count)s", String(sumSequence.length));
@@ -1572,9 +1660,6 @@
             cursor = 0;
         }
         highlight({follow: true});
-        if (blobUrl) {
-            syncSumCutout(blobUrl);
-        }
         sumResults.scrollIntoView({behavior: "smooth", block: "nearest"});
     }
 
@@ -1680,30 +1765,73 @@
         return [...items].sort((left, right) => dateOf(left).localeCompare(dateOf(right)));
     }
 
+    let diffBlobUrl = null;
+
+    function showDiffResult(frame) {
+        if (!diffResults || !diffResultList) {
+            return;
+        }
+        diffResultList.replaceChildren();
+        const row = document.createElement("div");
+        row.className = "list-group-item list-group-item-action active";
+        const date = document.createElement("span");
+        date.className = "d-block";
+        date.textContent = frame.date || "";
+        const detectors = document.createElement("span");
+        detectors.className = "d-block";
+        const numbers = frame.detectors || [];
+        detectors.textContent = numbers.length === 1
+            ? messages.detectorNumber.replace("%(number)s", numbers[0])
+            : messages.sumDetectors.replace("%(list)s", numbers.join(", "));
+        const meta = document.createElement("span");
+        meta.className = "d-block small text-muted";
+        meta.textContent = [frame.obsId, frame.collection].filter(Boolean).join(" · ");
+        row.append(date, detectors, meta);
+        diffResultList.append(row);
+        setProcessMessage(diffViewerMessage, messages.diffPlaying, true);
+        diffCutout?.classList.add("d-none");
+        diffResults.classList.remove("d-none");
+        diffResults.scrollIntoView({behavior: "smooth", block: "nearest"});
+        fetchCutout(frame.url).then((blob) => {
+            if (diffBlobUrl) {
+                URL.revokeObjectURL(diffBlobUrl);
+            }
+            diffBlobUrl = URL.createObjectURL(blob);
+            diffCutout.src = diffBlobUrl;
+            diffCutout.classList.remove("d-none");
+            diffViewerMessage?.classList.add("d-none");
+        }).catch((error) => {
+            if (error?.name === "AbortError" || !diffViewerMessage) {
+                return;
+            }
+            setProcessMessage(
+                diffViewerMessage,
+                error?.name === "CutoutError" ? error.message : messages.cutoutLoadFailed,
+                false,
+            );
+        });
+    }
+
     function subtractCheckedObservations() {
         stop();
         const chosen = selectedFrames();
         if (chosen.length !== 2) {
             message.textContent = messages.diffNeed;
             message.classList.remove("d-none");
-            cutout.classList.add("d-none");
             return;
         }
         const [earlier, later] = orderedPair(chosen, (row) => row.dataset.date || "");
         paintStackButton("diff-open", true);
-        setSumStatus(messages.diffPlaying);
-        displayUrl(
-            diffUrl([earlier.dataset.id], [later.dataset.id]),
-            `${earlier.dataset.date || ""} − ${later.dataset.date || ""}`,
-            {mirror: false},
-        ).then((ok) => {
-            if (ok) {
-                setSumStatus(messages.diffOne);
-            }
+        showDiffResult({
+            url: diffUrl([earlier.dataset.id], [later.dataset.id]),
+            detectors: [earlier.dataset.detector],
+            date: `${earlier.dataset.date || ""} − ${later.dataset.date || ""}`,
+            obsId: `${earlier.dataset.obsId || ""} − ${later.dataset.obsId || ""}`,
+            collection: earlier.dataset.collection || "",
         });
     }
 
-    async function subtractCheckedSums() {
+    function subtractCheckedSums() {
         stop();
         const chosen = selectedSumFrames();
         if (chosen.length !== 2) {
@@ -1711,41 +1839,22 @@
                 sumViewerMessage.textContent = messages.diffNeedSums;
                 sumViewerMessage.classList.remove("d-none");
             }
-            sumCutout?.classList.add("d-none");
             return;
         }
         const [earlier, later] = orderedPair(chosen, (frame) => frame.date || "");
-        const url = diffUrl(
-            earlier.items.map((row) => row.dataset.id),
-            later.items.map((row) => row.dataset.id),
-        );
-        if (sumViewerMessage) {
-            sumViewerMessage.textContent = messages.diffPlaying;
-            sumViewerMessage.classList.remove("d-none");
-        }
-        if (sumFrameLabel) {
-            sumFrameLabel.textContent = `${earlier.date || ""} − ${later.date || ""}`;
-        }
         paintStackButton("sum-diff", true);
-        try {
-            const blob = await fetchCutout(url);
-            if (sumBlobUrl) {
-                URL.revokeObjectURL(sumBlobUrl);
-            }
-            sumBlobUrl = URL.createObjectURL(blob);
-            sumCutout.src = sumBlobUrl;
-            sumCutout.classList.remove("d-none");
-            sumViewerMessage?.classList.add("d-none");
-        } catch (error) {
-            if (error?.name === "AbortError") {
-                return;
-            }
-            if (sumViewerMessage) {
-                sumViewerMessage.textContent = error?.name === "CutoutError" ? error.message : messages.cutoutLoadFailed;
-                sumViewerMessage.classList.remove("d-none");
-            }
-            sumCutout?.classList.add("d-none");
-        }
+        showDiffResult({
+            url: diffUrl(
+                earlier.items.map((row) => row.dataset.id),
+                later.items.map((row) => row.dataset.id),
+            ),
+            detectors: earlier.detectors,
+            date: `${earlier.date || ""} − ${later.date || ""}`,
+            obsId: `${earlier.obsId || ""} − ${later.obsId || ""}`,
+            collection: earlier.collection && earlier.collection === later.collection
+                ? earlier.collection
+                : [earlier.collection, later.collection].filter(Boolean).join(" − "),
+        });
     }
 
     function showObsError(text) {
@@ -1989,7 +2098,7 @@
         }
         highlight({follow: true, items: frame.items, sumIndex: original});
         abortInflight();
-        displayUrl(frame.url, "");
+        displaySumUrl(frame.url, "");
     });
     document.getElementById("sum-clear")?.addEventListener("click", () => {
         setSumMode(null);
