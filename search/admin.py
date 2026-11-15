@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import ExampleSkyObject, ImageTest, SpherexCollection, SpherexImage
+from .models import AllwiseAnchor, ExampleSkyObject, ImageTest, SpherexCollection, SpherexImage
 
 
 @admin.register(ImageTest)
@@ -29,3 +29,10 @@ class SpherexImageAdmin(admin.ModelAdmin):
     list_display = ("obs_id", "detector", "observation_date", "collection", "ra_center", "dec_center")
     search_fields = ("obs_id", "access_url", "collection")
     list_filter = ("detector", "collection")
+
+
+@admin.register(AllwiseAnchor)
+class AllwiseAnchorAdmin(admin.ModelAdmin):
+    list_display = ("ra", "dec", "year", "w1mpro", "updated_at")
+    search_fields = ("ra", "dec")
+    readonly_fields = ("updated_at",)

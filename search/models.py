@@ -74,3 +74,21 @@ class SpherexImage(models.Model):
     def __str__(self):
         detector = f" D{self.detector}" if self.detector else ""
         return f"{self.obs_id}{detector} - {self.observation_date}"
+
+
+class AllwiseAnchor(models.Model):
+    """AllWISE catalog position saved after a successful IRSA query."""
+
+    ra = models.FloatField()
+    dec = models.FloatField()
+    year = models.PositiveSmallIntegerField(default=2010)
+    w1mpro = models.FloatField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["ra", "dec"], name="allwise_anchor_pos"),
+        ]
+
+    def __str__(self):
+        return f"AllWISE {self.year} {self.ra:.5f} {self.dec:.5f}"

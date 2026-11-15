@@ -25,7 +25,7 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 from PIL import Image
 
-from .models import SpherexCollection, SpherexImage
+from .models import AllwiseAnchor, SpherexCollection, SpherexImage
 
 conf.remote_timeout = 120
 
@@ -117,13 +117,18 @@ def fov_to_arcsec(value, unit):
 
 
 def allwise_anchor(ra, dec):
-    """Brightest AllWISE source within 4 arcmin, at its catalog epoch."""
+    """Brightest AllWISE source within 4 arcmin, from the local table or IRSA."""
     coord = parse_coordinates(ra, dec)
     key = (round(float(coord.ra.deg), 4), round(float(coord.dec.deg), 4))
     now = time.monotonic()
     cached = _ALLWISE_CACHE.get(key)
     if cached and cached[0] > now:
         return dict(cached[1])
+    local = _local_allwise(coord)
+    if local is not None:
+        payload = _payload_from_anchor(local, coord)
+        _ALLWISE_CACHE[key] = (now + 600, payload)
+        return dict(payload)
     try:
         table = Irsa.query_region(
             coordinates=coord,
@@ -135,21 +140,60 @@ def allwise_anchor(ra, dec):
     except Exception:
         logger.exception("AllWISE catalog query failed")
         return {"found": False}
-    payload = _brightest_allwise(table, coord)
+    payload, magnitude = _brightest_allwise(table, coord)
     payload["center_ra"] = float(coord.ra.deg)
     payload["center_dec"] = float(coord.dec.deg)
+    if payload.get("found"):
+        _store_allwise(payload, magnitude)
     _ALLWISE_CACHE[key] = (now + 600, payload)
     return dict(payload)
 
 
+def _local_allwise(coord):
+    half_dec = 4 / 60
+    dec = float(coord.dec.deg)
+    rows = AllwiseAnchor.objects.filter(dec__gte=dec - half_dec, dec__lte=dec + half_dec)
+    best = None
+    best_sep = None
+    for row in rows:
+        source = SkyCoord(row.ra, row.dec, unit="deg", frame="icrs")
+        separation = float(coord.separation(source).arcmin)
+        if separation <= 4 and (best_sep is None or separation < best_sep):
+            best = row
+            best_sep = separation
+    return best
+
+
+def _payload_from_anchor(row, coord):
+    source = SkyCoord(row.ra, row.dec, unit="deg", frame="icrs")
+    return {
+        "found": True,
+        "ra": float(source.ra.deg),
+        "dec": float(source.dec.deg),
+        "year": row.year,
+        "separation_arcsec": float(coord.separation(source).arcsec),
+        "center_ra": float(coord.ra.deg),
+        "center_dec": float(coord.dec.deg),
+    }
+
+
+def _store_allwise(payload, magnitude):
+    AllwiseAnchor.objects.update_or_create(
+        ra=round(payload["ra"], 5),
+        dec=round(payload["dec"], 5),
+        defaults={"year": payload["year"], "w1mpro": magnitude},
+    )
+
+
 def _brightest_allwise(table, coord):
     if table is None or len(table) == 0 or "w1mpro" not in {name.lower() for name in table.colnames}:
-        return {"found": False}
+        return {"found": False}, None
     lookup = {name.lower(): name for name in table.colnames}
     magnitudes = np.ma.filled(np.ma.asarray(table[lookup["w1mpro"]], dtype=float), np.nan)
     if not np.any(np.isfinite(magnitudes)):
-        return {"found": False}
-    row = table[int(np.nanargmin(magnitudes))]
+        return {"found": False}, None
+    index = int(np.nanargmin(magnitudes))
+    row = table[index]
     source = SkyCoord(float(row[lookup["ra"]]), float(row[lookup["dec"]]), unit="deg", frame="icrs")
     year = 2010
     mjd_name = lookup.get("w1mjdmean")
@@ -160,13 +204,14 @@ def _brightest_allwise(table, coord):
             mjd = np.nan
         if np.isfinite(mjd):
             year = int(round(float(Time(mjd, format="mjd").decimalyear)))
+    magnitude = float(magnitudes[index])
     return {
         "found": True,
         "ra": float(source.ra.deg),
         "dec": float(source.dec.deg),
         "year": year,
         "separation_arcsec": float(coord.separation(source).arcsec),
-    }
+    }, magnitude
 
 
 def wavelength_label(em_min, em_max):

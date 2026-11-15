@@ -19,7 +19,7 @@ from django.utils import timezone
 
 from search import services, views
 from search.forms import CoordinateForm
-from search.models import SpherexCollection, SpherexImage
+from search.models import AllwiseAnchor, SpherexCollection, SpherexImage
 
 
 def _sky_header():
@@ -657,11 +657,11 @@ class AdvancedSearchTests(SimpleTestCase):
         self.assertEqual(new_count, 1)
 
 
-class AllwiseAnchorTests(SimpleTestCase):
+class AllwiseAnchorTests(TestCase):
     def setUp(self):
         services._ALLWISE_CACHE.clear()
 
-    def test_the_brightest_source_is_kept_and_cached(self):
+    def test_the_brightest_source_is_saved_and_reused(self):
         table = Table({
             "ra": [10.0, 10.02],
             "dec": [0.0, 0.01],
@@ -670,14 +670,26 @@ class AllwiseAnchorTests(SimpleTestCase):
         })
         with patch("search.services.Irsa.query_region", return_value=table) as query:
             first = services.allwise_anchor(10.0, 0.0)
+            services._ALLWISE_CACHE.clear()
             second = services.allwise_anchor(10.0, 0.0)
         self.assertEqual(query.call_count, 1)
+        self.assertEqual(AllwiseAnchor.objects.count(), 1)
         self.assertTrue(first["found"])
         self.assertAlmostEqual(first["ra"], 10.02)
         self.assertAlmostEqual(first["dec"], 0.01)
         self.assertEqual(first["year"], 2010)
         self.assertGreater(first["separation_arcsec"], 60)
-        self.assertEqual(second, first)
+        self.assertEqual(second["ra"], first["ra"])
+        self.assertEqual(second["year"], first["year"])
+
+    def test_a_saved_source_is_used_when_irsa_is_down(self):
+        AllwiseAnchor.objects.create(ra=10.02, dec=0.01, year=2010, w1mpro=4.5)
+        with patch("search.services.Irsa.query_region", side_effect=RuntimeError("down")) as query:
+            result = services.allwise_anchor(10.0, 0.0)
+        query.assert_not_called()
+        self.assertTrue(result["found"])
+        self.assertAlmostEqual(result["ra"], 10.02)
+        self.assertEqual(result["year"], 2010)
 
     def test_an_empty_cone_is_not_a_match(self):
         with patch("search.services.Irsa.query_region", return_value=Table()):

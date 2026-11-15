@@ -601,4 +601,5 @@ def _js_messages():
         "wiseOutside": _("The 2010 position falls outside this cutout."),
         "wiseArcmin": _("%(value)s arcmin"),
         "wiseArcsec": _("%(value)s arcsec"),
+        "wiseMissing": _("No AllWISE position is saved for this point, and IRSA did not return one."),
     }

@@ -2505,22 +2505,73 @@
 
     wiseToggle?.addEventListener("change", () => {
         window.spherexAllwiseVisible = wiseToggle.checked;
-        paintWiseMarks();
+        if (!wiseToggle.checked) {
+            wiseTicket += 1;
+            paintWiseMarks();
+            restoreSearchInfo();
+            return;
+        }
+        requestWise();
     });
     window.addEventListener("resize", paintWiseMarks);
     [cutout, sumCutout, diffCutout].forEach((img) => {
         img?.addEventListener("load", paintWiseMarks);
     });
-    if (viewer.dataset.ra && viewer.dataset.allwisePattern) {
+
+    let wiseTicket = 0;
+
+    function rememberSearchInfo() {
+        const info = document.getElementById("search-info");
+        if (!info || info.dataset.wiseHeld === "1") {
+            return;
+        }
+        info.dataset.wiseText = info.classList.contains("d-none") ? "" : info.textContent;
+        info.dataset.wiseHeld = "1";
+    }
+
+    function restoreSearchInfo() {
+        const info = document.getElementById("search-info");
+        if (!info || info.dataset.wiseHeld !== "1") {
+            return;
+        }
+        showSearchInfo(info.dataset.wiseText || "");
+        delete info.dataset.wiseHeld;
+        delete info.dataset.wiseText;
+    }
+
+    function showWiseMissing() {
+        rememberSearchInfo();
+        showSearchInfo(messages.wiseMissing);
+    }
+
+    function requestWise() {
+        if (!viewer.dataset.ra || !viewer.dataset.allwisePattern) {
+            showWiseMissing();
+            return;
+        }
+        const ticket = ++wiseTicket;
         const catalogUrl = `${viewer.dataset.allwisePattern}?ra=${encodeURIComponent(viewer.dataset.ra)}&dec=${encodeURIComponent(viewer.dataset.dec)}`;
         fetch(catalogUrl)
             .then((response) => response.json())
             .then((body) => {
+                if (ticket !== wiseTicket || !wiseToggle.checked) {
+                    return;
+                }
                 window.spherexAllwise = body;
                 paintWiseMarks();
+                if (body.found) {
+                    restoreSearchInfo();
+                } else {
+                    showWiseMissing();
+                }
             })
             .catch(() => {
+                if (ticket !== wiseTicket || !wiseToggle.checked) {
+                    return;
+                }
                 window.spherexAllwise = {found: false};
+                paintWiseMarks();
+                showWiseMissing();
             });
     }
 

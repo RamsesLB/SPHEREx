@@ -484,5 +484,8 @@ msgstr "%(value)s arcmin"
 msgid "%(value)s arcsec"
 msgstr "%(value)s segundos de arco"
 
+msgid "No AllWISE position is saved for this point, and IRSA did not return one."
+msgstr "No hay una posición de AllWISE guardada para este punto, e IRSA no devolvió ninguna."
+
 msgid "AllWISE 2010"
 msgstr "AllWISE 2010"
