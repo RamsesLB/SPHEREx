@@ -122,10 +122,28 @@
     #result-list { max-height: calc(var(--stage-h) - 1.75rem); overflow: auto; }
     #result-list .obs-open { font-size: inherit; line-height: inherit; }
     #result-list .list-group-item.active .obs-open { color: inherit; }
-    .sum-results { margin-top: 1.25rem; }
-    #sum-result-list { max-height: 14rem; overflow: auto; }
+    .sum-results { margin-top: 1.75rem; padding-top: 0.5rem; }
+    .sum-results .sky-layout { --stage-h: min(calc(100vh - 18rem), 520px); }
+    #sum-result-list { max-height: calc(var(--stage-h) - 1.75rem); overflow: auto; }
     #sum-result-list .sum-open { font-size: inherit; line-height: inherit; }
     #sum-result-list .list-group-item.active .sum-open { color: inherit; }
+    #sum-viewer {
+        background: #111;
+        color: #ddd;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+    }
+    #sum-cutout {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        image-rendering: pixelated;
+    }
     #cutout-box legend { font-size: 1rem; padding: 0 0.4rem; }
     .search-trail {
         --trail-gap: 0.2rem;
@@ -261,7 +279,7 @@
     <form method="get" class="sky-layout" autocomplete="off">
         <div class="sky-form">
             <div id="zone-box" class="step-box">
-                <h2 class="step-title">{% trans "1. Preview" %}</h2>
+                <h2 class="step-title" id="preview-title"><span>{% trans "1. Preview" %}</span><span id="preview-object" class="fw-normal text-muted"></span></h2>
                 <div class="field-row">
                     <label class="form-label" for="survey">{% trans "Base survey" %}</label>
                     <div class="field-control">
@@ -469,10 +487,23 @@
         </div>
         <div id="sum-results" class="sum-results d-none">
             <div class="d-flex justify-content-between align-items-center mb-2">
-                <h2 class="h6 mb-0">{% trans "Sum results" %}</h2>
+                <div class="d-flex align-items-center gap-2">
+                    <input class="form-check-input m-0" type="checkbox" id="select-all-sum" checked aria-label="{% trans "Select all" %}">
+                    <h2 class="h6 mb-0">{% trans "Sum results" %}</h2>
+                </div>
                 <span class="small text-muted" id="sum-result-count"></span>
             </div>
-            <div class="list-group" id="sum-result-list"></div>
+            <div class="sky-layout">
+                <div class="sky-form">
+                    <div class="list-group" id="sum-result-list"></div>
+                </div>
+                <div class="sky-stage">
+                    <div id="sum-viewer" class="stage-frame rounded">
+                        <p id="sum-viewer-message" class="m-3 text-center">{% trans "Choose a summed image." %}</p>
+                        <img id="sum-cutout" class="d-none" alt="{% trans "SPHEREx cutout" %}">
+                    </div>
+                </div>
+            </div>
         </div>
     </section>
     <div class="modal fade" id="empty-detector-modal" tabindex="-1" aria-labelledby="empty-detector-title" aria-hidden="true">
@@ -648,6 +679,8 @@
     const sumResults = document.getElementById("sum-results");
     const sumResultList = document.getElementById("sum-result-list");
     const sumResultCount = document.getElementById("sum-result-count");
+    const sumCutout = document.getElementById("sum-cutout");
+    const sumViewerMessage = document.getElementById("sum-viewer-message");
     let cursor = 0;
     let timer = null;
     let releaseWait = null;
@@ -656,6 +689,9 @@
     const inflight = new Map();
     const prefetchLimit = 2;
     let sumSequence = null;
+    let sumPlayStarted = false;
+    let sumSeenUrls = new Set();
+    let sumResultsReady = false;
     let blobUrl = null;
     let playing = false;
     let frameMs = null;
@@ -804,7 +840,7 @@
         highlight();
     }
 
-    function highlight({follow = false, item = null, items = null} = {}) {
+    function highlight({follow = false, item = null, items = null, sumIndex = null} = {}) {
         let current = items;
         if (!current && item) {
             current = [item];
@@ -814,17 +850,20 @@
         }
         [...list.querySelectorAll("[data-id]")].forEach((entry) => entry.classList.remove("active"));
         current.forEach((entry) => entry.classList.add("active"));
+        let activeSum = sumIndex;
+        if (activeSum == null && sumSequence?.length) {
+            activeSum = sequence()[cursor]?.sumIndex;
+        }
         if (sumResultList) {
             [...sumResultList.querySelectorAll("[data-sum-index]")].forEach((row) => {
-                const active = sumSequence && Number(row.dataset.sumIndex) === cursor;
-                row.classList.toggle("active", active);
+                row.classList.toggle("active", activeSum != null && Number(row.dataset.sumIndex) === activeSum);
             });
         }
         if (!follow) {
             return;
         }
-        if (sumSequence?.length && sumResultList) {
-            const sumRow = sumResultList.querySelector(`[data-sum-index="${cursor}"]`);
+        if (sumResultsReady && sumResultList && activeSum != null) {
+            const sumRow = sumResultList.querySelector(`[data-sum-index="${activeSum}"]`);
             if (sumRow) {
                 const listRect = sumResultList.getBoundingClientRect();
                 const itemRect = sumRow.getBoundingClientRect();
@@ -863,9 +902,34 @@
         return [...list.querySelectorAll("[data-id]")];
     }
 
+    function selectedSumFrames() {
+        if (!sumSequence?.length) {
+            return [];
+        }
+        if (!sumResultsReady) {
+            return sumSequence;
+        }
+        return sumSequence.filter((frame) => {
+            const row = sumResultList?.querySelector(`[data-sum-index="${frame.sumIndex}"]`);
+            return row?.querySelector(".sum-check")?.checked;
+        });
+    }
+
+    function syncSelectAllSum() {
+        const all = document.getElementById("select-all-sum");
+        if (!all) {
+            return;
+        }
+        const boxes = [...(sumResultList?.querySelectorAll(".sum-check") || [])];
+        const checked = boxes.filter((box) => box.checked).length;
+        all.checked = boxes.length > 0 && checked === boxes.length;
+        all.indeterminate = checked > 0 && checked < boxes.length;
+        all.disabled = boxes.length === 0;
+    }
+
     function sequence() {
         if (sumSequence?.length) {
-            return sumSequence;
+            return selectedSumFrames();
         }
         return selectedFrames().map((item) => ({items: [item], url: cutoutUrl(item.dataset.id)}));
     }
@@ -1007,6 +1071,8 @@
             }
             finishFrameLoad(true);
             setLoading(false);
+            syncSumCutout(blobUrl);
+            noteSumFrame(url);
             return true;
         } catch (error) {
             if (token !== displayToken || error?.name === "AbortError") {
@@ -1027,7 +1093,7 @@
 
     function emptySequenceMessage() {
         if (sumSequence) {
-            return messages.sumNone;
+            return sumResultsReady ? messages.selectToPlay : messages.sumNone;
         }
         return visibleFrames().length ? messages.selectToPlay : messages.noDetector;
     }
@@ -1265,6 +1331,10 @@
         playing = true;
         setPlayIcon(true);
         frameMs = null;
+        if (sumSequence?.length) {
+            sumPlayStarted = true;
+            setSumStatus(messages.sumPlaying.replace("%(count)s", String(sumSequence.length)));
+        }
         armCountdown(0, frames.length);
         countdownTimer = setInterval(paintCountdown, 250);
         schedulePrefetch();
@@ -1338,24 +1408,74 @@
         return sumSequence?.[0]?.detectors || [];
     }
 
-    function renderSumResults() {
-        if (!sumResults || !sumResultList) {
+    function setSumStatus(text) {
+        const status = document.getElementById("sum-status");
+        if (!status) {
             return;
         }
+        status.textContent = text || "";
+        status.classList.toggle("d-none", !text);
+    }
+
+    function hideSumResults() {
+        sumResultsReady = false;
+        sumSeenUrls = new Set();
+        sumPlayStarted = false;
+        if (sumResultList) {
+            sumResultList.replaceChildren();
+        }
+        if (sumResultCount) {
+            sumResultCount.textContent = "";
+        }
+        if (sumCutout) {
+            sumCutout.removeAttribute("src");
+            sumCutout.classList.add("d-none");
+        }
+        if (sumViewerMessage) {
+            sumViewerMessage.textContent = messages.chooseSum;
+            sumViewerMessage.classList.remove("d-none");
+        }
+        sumResults?.classList.add("d-none");
+    }
+
+    function syncSumCutout(url) {
+        if (!sumResultsReady || !sumCutout || !url) {
+            return;
+        }
+        sumCutout.src = url;
+        sumCutout.classList.remove("d-none");
+        sumViewerMessage?.classList.add("d-none");
+    }
+
+    function noteSumFrame(url) {
+        if (!sumSequence?.length || !sumPlayStarted || !url) {
+            return;
+        }
+        sumSeenUrls.add(url);
+        if (!sumResultsReady && sumSeenUrls.size >= sumSequence.length) {
+            revealSumResults();
+        }
+    }
+
+    function revealSumResults() {
+        if (!sumResults || !sumResultList || !sumSequence?.length) {
+            return;
+        }
+        sumResultsReady = true;
         sumResultList.replaceChildren();
-        if (!sumSequence?.length) {
-            sumResults.classList.add("d-none");
-            if (sumResultCount) {
-                sumResultCount.textContent = "";
-            }
-            return;
-        }
         const detectorLabel = messages.sumDetectors.replace("%(list)s", sumDetectorsList().join(", "));
-        sumSequence.forEach((frame, index) => {
-            const row = document.createElement("button");
-            row.type = "button";
-            row.className = "list-group-item list-group-item-action text-start sum-open";
-            row.dataset.sumIndex = String(index);
+        sumSequence.forEach((frame) => {
+            const row = document.createElement("div");
+            row.className = "list-group-item list-group-item-action d-flex align-items-start gap-2";
+            row.dataset.sumIndex = String(frame.sumIndex);
+            const box = document.createElement("input");
+            box.type = "checkbox";
+            box.className = "form-check-input sum-check mt-1";
+            box.checked = true;
+            box.setAttribute("aria-label", messages.selectObservation);
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "btn btn-link text-start text-reset text-decoration-none p-0 flex-grow-1 sum-open";
             const date = document.createElement("span");
             date.className = "d-block";
             date.textContent = frame.date || "";
@@ -1365,34 +1485,46 @@
             const meta = document.createElement("span");
             meta.className = "d-block small text-muted";
             meta.textContent = [frame.obsId, frame.collection].filter(Boolean).join(" · ");
-            row.append(date, detectors, meta);
+            button.append(date, detectors, meta);
+            row.append(box, button);
             sumResultList.append(row);
         });
         if (sumResultCount) {
             sumResultCount.textContent = messages.sumCount.replace("%(count)s", String(sumSequence.length));
         }
+        setSumStatus(messages.sumCount.replace("%(count)s", String(sumSequence.length)));
+        syncSelectAllSum();
         sumResults.classList.remove("d-none");
+        if (cursor >= sequence().length) {
+            cursor = 0;
+        }
+        highlight({follow: true});
+        if (blobUrl) {
+            syncSumCutout(blobUrl);
+        }
+        sumResults.scrollIntoView({behavior: "smooth", block: "nearest"});
     }
 
     function setSumMode(frames) {
         const button = document.getElementById("sum-open");
-        const status = document.getElementById("sum-status");
-        sumSequence = frames?.length ? frames : null;
+        if (frames?.length) {
+            frames.forEach((frame, index) => {
+                frame.sumIndex = index;
+            });
+            sumSequence = frames;
+        } else {
+            sumSequence = null;
+        }
         const active = Boolean(sumSequence?.length);
         button?.classList.toggle("btn-primary", active);
         button?.classList.toggle("btn-outline-secondary", !active);
         button?.setAttribute("aria-pressed", active ? "true" : "false");
-        renderSumResults();
-        if (!status) {
-            return;
-        }
+        hideSumResults();
         if (!active) {
-            status.textContent = "";
-            status.classList.add("d-none");
+            setSumStatus("");
             return;
         }
-        status.textContent = messages.sumReady.replace("%(count)s", String(sumSequence.length));
-        status.classList.remove("d-none");
+        setSumStatus(messages.sumReady.replace("%(count)s", String(sumSequence.length)));
     }
 
     function showSumError(text) {
@@ -1542,12 +1674,7 @@
         cursor = 0;
         setSumMode(frames);
         bootstrap.Modal.getOrCreateInstance(document.getElementById("sum-obs-modal")).hide();
-        if (frames.length) {
-            sumResults?.scrollIntoView({behavior: "smooth", block: "nearest"});
-            showFrame(0, {follow: true});
-        } else {
-            highlight();
-        }
+        highlight();
     }
 
     document.getElementById("sum-open")?.addEventListener("click", openSumModal);
@@ -1558,13 +1685,36 @@
             box.checked = event.target.checked;
         });
     });
+    document.getElementById("select-all-sum")?.addEventListener("change", (event) => {
+        sumResultList?.querySelectorAll(".sum-check").forEach((box) => {
+            box.checked = event.target.checked;
+        });
+        syncSelectAllSum();
+    });
     sumResultList?.addEventListener("click", (event) => {
+        if (event.target.closest(".sum-check")) {
+            syncSelectAllSum();
+            return;
+        }
         const row = event.target.closest("[data-sum-index]");
-        if (!row || !sumSequence?.length) {
+        if (!row || !sumSequence?.length || !sumResultsReady) {
             return;
         }
         stop();
-        showFrame(Number(row.dataset.sumIndex), {follow: true});
+        const original = Number(row.dataset.sumIndex);
+        const frames = sequence();
+        const index = frames.findIndex((frame) => frame.sumIndex === original);
+        if (index >= 0) {
+            showFrame(index, {follow: true});
+            return;
+        }
+        const frame = sumSequence[original];
+        if (!frame) {
+            return;
+        }
+        highlight({follow: true, items: frame.items, sumIndex: original});
+        abortInflight();
+        displayUrl(frame.url, "");
     });
     document.getElementById("sum-clear")?.addEventListener("click", () => {
         setSumMode(null);
@@ -1869,6 +2019,7 @@
             unlockCoordinate(decField);
             raField.value = Number(ra).toFixed(6);
             decField.value = Number(dec).toFixed(6);
+            setPreviewObject("");
             drawCutout();
         });
     } catch (error) {
@@ -1959,6 +2110,14 @@
         return "";
     }
 
+    function setPreviewObject(name) {
+        const label = document.getElementById("preview-object");
+        if (!label) {
+            return;
+        }
+        label.textContent = name ? ` (obj. ${name})` : "";
+    }
+
     function applyToForm(item) {
         unlockCoordinate(raField);
         unlockCoordinate(decField);
@@ -1966,6 +2125,7 @@
         decField.value = item.dec;
         document.getElementById("fov").value = item.fov;
         document.getElementById("unit").value = item.unit;
+        setPreviewObject(item.name);
         refreshMap();
     }
 

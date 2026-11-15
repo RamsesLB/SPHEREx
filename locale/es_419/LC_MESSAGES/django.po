@@ -174,6 +174,12 @@ msgstr "Selecciona al menos un detector."
 msgid "%(count)s observations ready to sum. Press play."
 msgstr "%(count)s observaciones listas para sumar. Presiona reproducir."
 
+msgid "Summing detectors for %(count)s observations."
+msgstr "Sumando los detectores de %(count)s observaciones."
+
+msgid "Choose a summed image."
+msgstr "Elige una imagen sumada."
+
 msgid "Only this SPHEREx release is searched. New releases appear in this list."
 msgstr "Solo se busca esta publicación de SPHEREx. Las publicaciones nuevas aparecen en esta lista."
 
