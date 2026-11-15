@@ -58,11 +58,11 @@ def refresh(request):
     data = form.cleaned_data
     try:
         coord = services.parse_coordinates(data["ra"], data["dec"])
-        had_local = bool(services.local_images_covering(coord, data["collection"]))
+        had_local = bool(services.local_images_covering(coord, data["collections"]))
     except services.SearchError:
         had_local = False
     try:
-        images, new_count = services.search_and_store(data["ra"], data["dec"], collection=data["collection"])
+        images, new_count = services.search_collections(data["ra"], data["dec"], data["collections"])
     except services.SearchError:
         state, text = _irsa_trail("unavailable" if had_local else "unavailable_empty", 0)
         payload = {"status": "unavailable", "irsa_state": state, "irsa_text": text}
@@ -80,7 +80,7 @@ def refresh(request):
             "irsa_state": "empty",
             "irsa_text": _irsa_trail("empty", 0)[1],
             "info": _("IRSA returned no SPHEREx images for this position in %(collection)s.") % {
-                "collection": data["collection"],
+                "collection": _collection_phrase(data["collections"]),
             },
         })
     state, text = _irsa_trail("ready", new_count, images)
@@ -116,17 +116,67 @@ def cutout(request, pk):
             status=502,
             content_type="text/plain; charset=utf-8",
         )
+    return _png_response(path, pk)
+
+
+def sum_cutout(request):
+    try:
+        ids = [int(part) for part in request.GET.get("ids", "").split(",") if part.strip()]
+    except ValueError:
+        return HttpResponse(
+            _("Select at least one detector."),
+            status=400,
+            content_type="text/plain; charset=utf-8",
+        )
+    ids = list(dict.fromkeys(ids))
+    if not ids or len(ids) > 6:
+        return HttpResponse(
+            _("Select at least one detector."),
+            status=400,
+            content_type="text/plain; charset=utf-8",
+        )
+    images = list(SpherexImage.objects.filter(pk__in=ids))
+    if len(images) != len(ids):
+        return HttpResponse(
+            _("The cutout could not be generated."),
+            status=404,
+            content_type="text/plain; charset=utf-8",
+        )
+    try:
+        fov_arcsec = services.fov_to_arcsec(
+            request.GET.get("fov"),
+            request.GET.get("unit", "arcsec"),
+        )
+        path = services.cached_sum_cutout(
+            images,
+            request.GET.get("ra", ""),
+            request.GET.get("dec", ""),
+            fov_arcsec,
+        )
+    except services.SearchError as exc:
+        return HttpResponse(str(exc), status=422, content_type="text/plain; charset=utf-8")
+    except Exception:
+        logger.exception("Could not sum images %s", ids)
+        return HttpResponse(
+            _("The cutout could not be generated."),
+            status=502,
+            content_type="text/plain; charset=utf-8",
+        )
+    return _png_response(path, ids)
+
+
+def _png_response(path, label):
     try:
         payload = path.read_bytes()
     except Exception:
-        logger.exception("Could not read cutout file for image %s", pk)
+        logger.exception("Could not read cutout file for %s", label)
         return HttpResponse(
             _("The cutout could not be generated."),
             status=502,
             content_type="text/plain; charset=utf-8",
         )
     if not payload:
-        logger.error("Cutout file for image %s was empty", pk)
+        logger.error("Cutout file for %s was empty", label)
         return HttpResponse(
             _("The cutout could not be generated."),
             status=502,
@@ -143,7 +193,7 @@ def _search_page(form):
     data = form.cleaned_data
     try:
         coord = services.parse_coordinates(data["ra"], data["dec"])
-        local = services.local_images_covering(coord, data["collection"])
+        local = services.local_images_covering(coord, data["collections"])
     except services.SearchError as exc:
         local_state, local_text = _local_trail([])
         irsa_state, irsa_text = _irsa_trail("unavailable_empty", 0)
@@ -154,7 +204,7 @@ def _search_page(form):
         irsa_state, irsa_text = _irsa_trail("pending", 0)
         return frames, None, _result_info(local, 0), _trail(local_state, local_text, irsa_state, irsa_text), _refresh_url(data)
     try:
-        images, new_count = services.search_and_store(data["ra"], data["dec"], collection=data["collection"])
+        images, new_count = services.search_collections(data["ra"], data["dec"], data["collections"])
     except services.SearchError as exc:
         local_state, local_text = _local_trail([])
         irsa_state, irsa_text = _irsa_trail("unavailable_empty", 0)
@@ -169,7 +219,7 @@ def _search_page(form):
     if not frames:
         irsa_state, irsa_text = _irsa_trail("empty", 0)
         info = _("IRSA returned no SPHEREx images for this position in %(collection)s.") % {
-            "collection": data["collection"],
+            "collection": _collection_phrase(data["collections"]),
         }
     else:
         irsa_state, irsa_text = _irsa_trail("ready", new_count, images)
@@ -178,15 +228,22 @@ def _search_page(form):
 
 
 def _refresh_url(data):
-    query = urlencode({
-        "ra": data["ra"],
-        "dec": data["dec"],
-        "fov": data["fov"],
-        "unit": data["unit"],
-        "collection": data["collection"],
-        "detector": data["detector"],
-    })
-    return f"{reverse('refresh')}?{query}"
+    pairs = [
+        ("ra", data["ra"]),
+        ("dec", data["dec"]),
+        ("fov", data["fov"]),
+        ("unit", data["unit"]),
+        ("collection", data["collection"]),
+        ("detector", data["detector"]),
+    ]
+    if data.get("advanced"):
+        pairs.append(("advanced", "on"))
+        pairs.extend(("collections", name) for name in data["collections"])
+    return f"{reverse('refresh')}?{urlencode(pairs)}"
+
+
+def _collection_phrase(names):
+    return ", ".join(str(services.collection_label(name)) for name in names)
 
 
 def _trail(local_state, local_text, irsa_state, irsa_text):
@@ -316,4 +373,15 @@ def _js_messages():
         "progress": _("%(done)s / %(total)s · %(eta)s left"),
         "noResults": _("No results."),
         "chooseObservation": _("Choose an observation or press play."),
+        "selectToPlay": _("Select at least one observation to play."),
+        "selectObservation": _("Include in playback"),
+        "sum": _("Sum"),
+        "detectorNumber": _("Detector %(number)s"),
+        "sumNone": _("No observation includes every selected detector."),
+        "selectDetector": _("Select at least one detector."),
+        "sumReady": _("%(count)s observations ready to sum. Press play."),
+        "sumGroup": _("Detectors %(list)s · %(count)s observations"),
+        "sumPick": _("Choose the observations to include. Each checked observation becomes one summed image. Confirm with none checked to keep every match."),
+        "sumNoGroup": _("No observation has more than one detector to sum."),
+        "confirm": _("Confirm"),
     }

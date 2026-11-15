@@ -99,14 +99,12 @@
         object-fit: contain;
         image-rendering: pixelated;
     }
+    #play-progress .progress {
+        margin-bottom: 0;
+    }
     #frame-load {
-        position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 0;
         height: 3px;
-        background: rgba(255, 255, 255, 0.12);
-        z-index: 3;
+        background: rgba(0, 0, 0, 0.08);
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.15s ease;
@@ -118,11 +116,12 @@
         display: block;
         height: 100%;
         width: 0%;
-        background: #000;
-        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+        background: #111;
         transition: none;
     }
     #result-list { max-height: calc(var(--stage-h) - 1.75rem); overflow: auto; }
+    #result-list .obs-open { font-size: inherit; line-height: inherit; }
+    #result-list .list-group-item.active .obs-open { color: inherit; }
     #cutout-box legend { font-size: 1rem; padding: 0 0.4rem; }
     .search-trail {
         --trail-gap: 0.2rem;
@@ -313,6 +312,20 @@
                         {% for err in form.collection.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
                     </div>
                 </div>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" name="advanced" id="advanced-search" {% if form.advanced.value %}checked{% endif %}>
+                    <label class="form-check-label" for="advanced-search">{% trans "Advanced search" %}</label>
+                </div>
+                <div id="advanced-collections" class="mt-2{% if not form.advanced.value %} d-none{% endif %}">
+                    <p class="form-text">{% trans "Each checked release is searched. The sum still stacks only the detectors that share one observation." %}</p>
+                    {% for value, label in form.fields.collection.choices %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="collections" value="{{ value }}" id="collections-{{ forloop.counter }}" {% if form.is_bound and value in form.collections.value %}checked{% endif %}>
+                        <label class="form-check-label" for="collections-{{ forloop.counter }}">{{ label }}</label>
+                    </div>
+                    {% endfor %}
+                    {% for err in form.collections.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+                </div>
                 <input type="hidden" name="detector" id="detector-hidden" value="{{ form.detector.value|default:form.detector.field.initial }}">
                 {% for err in form.non_field_errors %}
                 <div class="alert alert-danger py-2 mb-2">{{ err }}</div>
@@ -368,23 +381,31 @@
                     </select>
                 </div>
             </div>
-            <div class="d-flex justify-content-between align-items-baseline mb-2">
-                <h2 class="h6 mb-0">{% trans "Observations" %}</h2>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="d-flex align-items-center gap-2">
+                    <input class="form-check-input m-0" type="checkbox" id="select-all-obs" checked aria-label="{% trans "Select all" %}">
+                    <h2 class="h6 mb-0">{% trans "Observations" %}</h2>
+                </div>
                 <span class="small text-muted" id="visible-count"></span>
             </div>
             <div class="list-group" id="result-list">
                 {% for frame in frames %}
-                <button type="button"
-                        class="list-group-item list-group-item-action"
-                        data-id="{{ frame.id }}"
-                        data-detector="{{ frame.detector|default:'' }}">
-                    <span class="d-block">{{ frame.date }}</span>
-                    <span class="d-block">
-                        {{ frame.detector_label }}
-                        {% if frame.wavelength %} · {{ frame.wavelength }}{% endif %}
-                    </span>
-                    <span class="d-block small text-muted">{{ frame.obs_id }}{% if frame.collection %} · {{ frame.collection }}{% endif %}</span>
-                </button>
+                <div class="list-group-item list-group-item-action d-flex align-items-start gap-2"
+                     data-id="{{ frame.id }}"
+                     data-obs-id="{{ frame.obs_id }}"
+                     data-collection="{{ frame.collection }}"
+                     data-date="{{ frame.date }}"
+                     data-detector="{{ frame.detector|default:'' }}">
+                    <input class="form-check-input obs-check mt-1" type="checkbox" checked aria-label="{% trans "Include in playback" %}">
+                    <button type="button" class="btn btn-link text-start text-reset text-decoration-none p-0 flex-grow-1 obs-open">
+                        <span class="d-block">{{ frame.date }}</span>
+                        <span class="d-block">
+                            {{ frame.detector_label }}
+                            {% if frame.wavelength %} · {{ frame.wavelength }}{% endif %}
+                        </span>
+                        <span class="d-block small text-muted">{{ frame.obs_id }}{% if frame.collection %} · {{ frame.collection }}{% endif %}</span>
+                    </button>
+                </div>
                 {% empty %}
                 {% if not error %}
                 <p class="text-muted small">{% trans "No results." %}</p>
@@ -400,6 +421,7 @@
                  data-fov="{{ query.fov|unlocalize }}"
                  data-unit="{{ query.unit }}"
                  data-cutout-pattern="{% url 'cutout' 0 %}"
+                 data-sum-pattern="{% url 'sum_cutout' %}"
                  {% endif %}>
                 <p id="viewer-message" class="m-3 text-center">
                     {% trans "Choose an observation or press play." %}
@@ -408,22 +430,30 @@
                 <div id="loading" class="d-none position-absolute top-0 start-0 w-100 h-100 align-items-center justify-content-center" style="background: rgba(0,0,0,.45);">
                     <span>{% trans "Loading FITS…" %}</span>
                 </div>
-                <div id="frame-load" aria-hidden="true">
-                    <span id="frame-load-bar"></span>
-                </div>
             </div>
             <div class="stage-actions">
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="prev">{% trans "Previous" %}</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm icon-btn" id="prev" aria-label="{% trans "Previous" %}">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M491 100.8C478.1 93.8 462.3 94.5 450 102.6L192 272.1L192 128C192 110.3 177.7 96 160 96C142.3 96 128 110.3 128 128L128 512C128 529.7 142.3 544 160 544C177.7 544 192 529.7 192 512L192 367.9L450 537.5C462.3 545.6 478 546.3 491 539.3C504 532.3 512 518.8 512 504.1L512 136.1C512 121.4 503.9 107.9 491 100.9z"/></svg>
+                </button>
                 <button type="button" class="btn btn-outline-primary btn-sm icon-btn" id="play" aria-label="{% trans "Play" %}">
                     <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M187.2 100.9C174.8 94.1 159.8 94.4 147.6 101.6C135.4 108.8 128 121.9 128 136L128 504C128 518.1 135.5 531.2 147.6 538.4C159.7 545.6 174.8 545.9 187.2 539.1L523.2 355.1C536 348.1 544 334.6 544 320C544 305.4 536 291.9 523.2 284.9L187.2 100.9z"/></svg>
                     <svg class="icon-pause d-none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" aria-hidden="true"><path d="M48 64C21.5 64 0 85.5 0 112V400c0 26.5 21.5 48 48 48h32c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48H48zm192 0c-26.5 0-48 21.5-48 48V400c0 26.5 21.5 48 48 48h32c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48h-32z"/></svg>
                 </button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="next">{% trans "Next" %}</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm icon-btn" id="next" aria-label="{% trans "Next" %}">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M149 100.8C161.9 93.8 177.7 94.5 190 102.6L448 272.1L448 128C448 110.3 462.3 96 480 96C497.7 96 512 110.3 512 128L512 512C512 529.7 497.7 544 480 544C462.3 544 448 529.7 448 512L448 367.9L190 537.5C177.7 545.6 162 546.3 149 539.3C136 532.3 128 518.7 128 504L128 136C128 121.3 136.1 107.8 149 100.8z"/></svg>
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm icon-btn" id="sum-open" aria-pressed="false" aria-label="{% trans "Sum" %}">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M352 128C352 110.3 337.7 96 320 96C302.3 96 288 110.3 288 128L288 288L128 288C110.3 288 96 302.3 96 320C96 337.7 110.3 352 128 352L288 352L288 512C288 529.7 302.3 544 320 544C337.7 544 352 529.7 352 512L352 352L512 352C529.7 352 544 337.7 544 320C544 302.3 529.7 288 512 288L352 288L352 128z"/></svg>
+                </button>
                 <span id="frame-label" class="small text-muted"></span>
             </div>
+            <p id="sum-status" class="small text-muted d-none mb-0 mt-2"></p>
             <div id="play-progress" class="d-none mt-2">
                 <div class="progress" style="height: 0.4rem;" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                     <div id="play-progress-bar" class="progress-bar" style="width: 0%"></div>
+                </div>
+                <div id="frame-load" aria-hidden="true">
+                    <span id="frame-load-bar"></span>
                 </div>
                 <div id="play-progress-label" class="small text-muted mt-1"></div>
             </div>
@@ -451,6 +481,57 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-warning" data-bs-dismiss="modal">{% trans "Accept" %}</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="sum-modal" tabindex="-1" aria-labelledby="sum-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="sum-title">{% trans "Sum detectors" %}</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans "Close" %}"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">
+                        {% trans "Choose a detector group that shares the same observation. The next step lists those observations so you can keep only the dates you want." %}
+                    </p>
+                    <div id="sum-detector-choices" class="d-flex flex-column gap-2"></div>
+                    <p id="sum-modal-error" class="text-danger small d-none mt-2 mb-0"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="sum-clear">{% trans "Cancel" %}</button>
+                    <button type="button" class="btn btn-primary" id="sum-apply">{% trans "Apply" %}</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="sum-obs-modal" tabindex="-1" aria-labelledby="sum-obs-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="sum-obs-title">{% trans "Choose observations" %}</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans "Close" %}"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">{% trans "Choose the observations to include. Each checked observation becomes one summed image. Confirm with none checked to keep every match." %}</p>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th scope="col"><input class="form-check-input" type="checkbox" id="sum-obs-all" checked aria-label="{% trans "Select all" %}"></th>
+                                    <th scope="col">{% trans "Date" %}</th>
+                                    <th scope="col">{% trans "Observation" %}</th>
+                                    <th scope="col">{% trans "Collection" %}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sum-obs-rows"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+                    <button type="button" class="btn btn-primary" id="sum-obs-confirm">{% trans "Confirm" %}</button>
                 </div>
             </div>
         </div>
@@ -556,7 +637,11 @@
     let cursor = 0;
     let timer = null;
     let releaseWait = null;
-    let requestId = 0;
+    let displayToken = 0;
+    const cutoutCache = new Map();
+    const inflight = new Map();
+    const prefetchLimit = 2;
+    let sumDetectors = null;
     let blobUrl = null;
     let playing = false;
     let frameMs = null;
@@ -618,11 +703,76 @@
             requestAnimationFrame(step);
         }, 450);
     }
+    const advancedSearch = document.getElementById("advanced-search");
+    advancedSearch?.addEventListener("change", () => {
+        const panel = document.getElementById("advanced-collections");
+        panel?.classList.toggle("d-none", !advancedSearch.checked);
+        if (!advancedSearch.checked) {
+            return;
+        }
+        const boxes = [...document.querySelectorAll("#advanced-collections input[name='collections']")];
+        if (boxes.some((box) => box.checked)) {
+            return;
+        }
+        const current = document.getElementById("collection")?.value;
+        const match = boxes.find((box) => box.value === current);
+        if (match) {
+            match.checked = true;
+        }
+    });
     if (viewer) {
 
     function visibleFrames() {
         const detector = detectorSelect.value;
         return [...list.querySelectorAll("[data-id]")].filter((item) => item.dataset.detector === detector);
+    }
+
+    function selectedFrames() {
+        return visibleFrames().filter((item) => item.querySelector(".obs-check")?.checked);
+    }
+
+    function syncSelectAll() {
+        const all = document.getElementById("select-all-obs");
+        if (!all) {
+            return;
+        }
+        const boxes = visibleFrames().map((item) => item.querySelector(".obs-check")).filter(Boolean);
+        const checked = boxes.filter((box) => box.checked).length;
+        all.checked = boxes.length > 0 && checked === boxes.length;
+        all.indeterminate = checked > 0 && checked < boxes.length;
+        all.disabled = boxes.length === 0;
+    }
+
+    function observationItem(frame) {
+        const row = document.createElement("div");
+        row.className = "list-group-item list-group-item-action d-flex align-items-start gap-2";
+        row.dataset.id = frame.id;
+        row.dataset.obsId = frame.obs_id;
+        row.dataset.collection = frame.collection || "";
+        row.dataset.date = frame.date || "";
+        row.dataset.detector = frame.detector ?? "";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.className = "form-check-input obs-check mt-1";
+        box.checked = true;
+        box.setAttribute("aria-label", messages.selectObservation);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn btn-link text-start text-reset text-decoration-none p-0 flex-grow-1 obs-open";
+        const date = document.createElement("span");
+        date.className = "d-block";
+        date.textContent = frame.date;
+        const detail = document.createElement("span");
+        detail.className = "d-block";
+        detail.textContent = frame.wavelength
+            ? `${frame.detector_label} · ${frame.wavelength}`
+            : frame.detector_label;
+        const meta = document.createElement("span");
+        meta.className = "d-block small text-muted";
+        meta.textContent = frame.collection ? `${frame.obs_id} · ${frame.collection}` : frame.obs_id;
+        button.append(date, detail, meta);
+        row.append(box, button);
+        return row;
     }
 
     function updateCount() {
@@ -633,82 +783,182 @@
         visibleCount.textContent = frames.length
             ? messages.inDetector.replace("%(count)s", frames.length)
             : messages.noneInDetector;
-        if (cursor >= frames.length) {
+        syncSelectAll();
+        if (cursor >= sequence().length) {
             cursor = 0;
         }
         highlight();
     }
 
-    function highlight({follow = false} = {}) {
-        const frames = visibleFrames();
-        [...list.querySelectorAll("[data-id]")].forEach((item) => item.classList.remove("active"));
-        const current = frames[cursor];
+    function highlight({follow = false, item = null, items = null} = {}) {
+        let current = items;
+        if (!current && item) {
+            current = [item];
+        }
         if (!current) {
+            current = sequence()[cursor]?.items || [];
+        }
+        [...list.querySelectorAll("[data-id]")].forEach((entry) => entry.classList.remove("active"));
+        current.forEach((entry) => entry.classList.add("active"));
+        const scrollTarget = current.find((entry) => !entry.classList.contains("d-none")) || current[0];
+        if (!scrollTarget || !follow) {
             return;
         }
-        current.classList.add("active");
-        if (follow) {
-            const listRect = list.getBoundingClientRect();
-            const itemRect = current.getBoundingClientRect();
-            list.scrollBy({top: itemRect.top - listRect.top, behavior: "smooth"});
-        }
+        const listRect = list.getBoundingClientRect();
+        const itemRect = scrollTarget.getBoundingClientRect();
+        list.scrollBy({top: itemRect.top - listRect.top, behavior: "smooth"});
     }
 
-    function cutoutUrl(id) {
-        const pattern = viewer.dataset.cutoutPattern.replace("/0/", `/${id}/`);
-        const params = new URLSearchParams({
+    function queryParams() {
+        return new URLSearchParams({
             ra: viewer.dataset.ra,
             dec: viewer.dataset.dec,
             fov: viewer.dataset.fov,
             unit: viewer.dataset.unit,
         });
-        return `${pattern}?${params}`;
     }
 
-    async function showFrame(index, {follow = false} = {}) {
-        const frames = visibleFrames();
-        if (!viewer.dataset.ra) {
-            message.textContent = messages.searchFirst;
-            message.classList.remove("d-none");
-            return;
+    function cutoutUrl(id) {
+        const pattern = viewer.dataset.cutoutPattern.replace("/0/", `/${id}/`);
+        return `${pattern}?${queryParams()}`;
+    }
+
+    function sumUrl(ids) {
+        return `${viewer.dataset.sumPattern}?ids=${ids.join(",")}&${queryParams()}`;
+    }
+
+    function allRows() {
+        return [...list.querySelectorAll("[data-id]")];
+    }
+
+    function sequence() {
+        if (sumDetectors?.length) {
+            return sumGroups(sumDetectors);
         }
-        if (!frames.length) {
-            stop();
-            message.textContent = messages.noDetector;
-            message.classList.remove("d-none");
-            cutout.classList.add("d-none");
-            frameLabel.textContent = "";
-            warnIfEmpty();
-            return;
-        }
-        cursor = (index + frames.length) % frames.length;
-        highlight({follow});
-        if (playing && frameMs != null) {
-            armCountdown(cursor + 1, frames.length);
-        }
-        const item = frames[cursor];
-        const myRequest = ++requestId;
-        const startedAt = performance.now();
-        let loaded = false;
-        setLoading(true);
-        startFrameLoad(startedAt);
-        message.classList.add("d-none");
-        frameLabel.textContent = `${cursor + 1} / ${frames.length}`;
-        try {
-            const response = await fetch(cutoutUrl(item.dataset.id));
-            const body = response.ok ? null : await response.text();
-            if (myRequest !== requestId) {
+        return selectedFrames().map((item) => ({items: [item], url: cutoutUrl(item.dataset.id)}));
+    }
+
+    function obsKey(row) {
+        return `${row.dataset.collection || ""}:${row.dataset.obsId || ""}`;
+    }
+
+    function sumGroups(detectors) {
+        const needed = new Set(detectors.map(String));
+        const frames = [];
+        const seen = new Set();
+        allRows().forEach((row) => {
+            const key = obsKey(row);
+            if (!row.dataset.obsId || seen.has(key)) {
                 return;
             }
-            if (!response.ok) {
-                message.textContent = cutoutErrorText(body);
-                message.classList.remove("d-none");
-                cutout.classList.add("d-none");
+            seen.add(key);
+            const siblings = allRows().filter((entry) => obsKey(entry) === key);
+            const members = siblings
+                .filter((entry) => needed.has(entry.dataset.detector))
+                .sort((left, right) => Number(left.dataset.detector) - Number(right.dataset.detector));
+            if (members.length !== needed.size) {
                 return;
+            }
+            if (!members.every((entry) => entry.querySelector(".obs-check")?.checked)) {
+                return;
+            }
+            frames.push({
+                items: members,
+                url: sumUrl(members.map((entry) => entry.dataset.id)),
+            });
+        });
+        return frames;
+    }
+
+    function rememberBlob(url, blob) {
+        if (cutoutCache.has(url)) {
+            cutoutCache.delete(url);
+        }
+        cutoutCache.set(url, blob);
+        while (cutoutCache.size > 24) {
+            cutoutCache.delete(cutoutCache.keys().next().value);
+        }
+    }
+
+    function fetchCutout(url) {
+        if (cutoutCache.has(url)) {
+            return Promise.resolve(cutoutCache.get(url));
+        }
+        const existing = inflight.get(url);
+        if (existing) {
+            return existing.promise;
+        }
+        const controller = new AbortController();
+        const promise = (async () => {
+            const response = await fetch(url, {signal: controller.signal});
+            const body = response.ok ? null : await response.text();
+            if (!response.ok) {
+                const error = new Error(cutoutErrorText(body));
+                error.name = "CutoutError";
+                throw error;
             }
             const blob = await response.blob();
-            if (myRequest !== requestId) {
+            rememberBlob(url, blob);
+            return blob;
+        })().finally(() => {
+            inflight.delete(url);
+            if (playing) {
+                schedulePrefetch();
+            }
+        });
+        inflight.set(url, {controller, promise});
+        return promise;
+    }
+
+    function abortInflight() {
+        const jobs = [...inflight.values()];
+        inflight.clear();
+        jobs.forEach((job) => job.controller.abort());
+    }
+
+    function schedulePrefetch() {
+        if (!playing) {
+            return;
+        }
+        const frames = sequence();
+        if (!frames.length) {
+            return;
+        }
+        const wanted = [];
+        for (let offset = 0; offset < frames.length && wanted.length < prefetchLimit; offset += 1) {
+            const url = frames[(cursor + offset) % frames.length].url;
+            if (cutoutCache.has(url) || wanted.includes(url)) {
+                continue;
+            }
+            wanted.push(url);
+        }
+        for (const [url, job] of inflight) {
+            if (!wanted.includes(url)) {
+                job.controller.abort();
+            }
+        }
+        wanted.forEach((url) => {
+            if (inflight.has(url) || inflight.size >= prefetchLimit) {
                 return;
+            }
+            fetchCutout(url).catch(() => {});
+        });
+    }
+
+    async function displayUrl(url, label) {
+        const token = ++displayToken;
+        const startedAt = performance.now();
+        const warm = cutoutCache.has(url);
+        if (!warm) {
+            setLoading(true);
+            startFrameLoad(startedAt);
+        }
+        message.classList.add("d-none");
+        frameLabel.textContent = label;
+        try {
+            const blob = await fetchCutout(url);
+            if (token !== displayToken) {
+                return false;
             }
             if (blobUrl) {
                 URL.revokeObjectURL(blobUrl);
@@ -717,28 +967,81 @@
             cutout.src = blobUrl;
             cutout.classList.remove("d-none");
             message.classList.add("d-none");
-            loaded = true;
-        } catch (error) {
-            if (myRequest !== requestId) {
-                return;
+            const elapsed = performance.now() - startedAt;
+            const firstSample = frameMs == null;
+            frameMs = firstSample ? elapsed : frameMs * 0.6 + elapsed * 0.4;
+            if (playing && firstSample) {
+                armCountdown(cursor + 1, sequence().length);
             }
-            message.textContent = messages.cutoutLoadFailed;
+            finishFrameLoad(true);
+            setLoading(false);
+            return true;
+        } catch (error) {
+            if (token !== displayToken || error?.name === "AbortError") {
+                if (token === displayToken) {
+                    finishFrameLoad(false);
+                    setLoading(false);
+                }
+                return false;
+            }
+            message.textContent = error?.name === "CutoutError" ? error.message : messages.cutoutLoadFailed;
             message.classList.remove("d-none");
             cutout.classList.add("d-none");
-        } finally {
-            if (myRequest === requestId) {
-                finishFrameLoad(loaded);
-                setLoading(false);
-                if (loaded) {
-                    const elapsed = performance.now() - startedAt;
-                    const firstSample = frameMs == null;
-                    frameMs = firstSample ? elapsed : frameMs * 0.6 + elapsed * 0.4;
-                    if (playing && firstSample) {
-                        armCountdown(cursor + 1, visibleFrames().length);
-                    }
-                }
-            }
+            finishFrameLoad(false);
+            setLoading(false);
+            return false;
         }
+    }
+
+    function emptySequenceMessage() {
+        if (sumDetectors?.length) {
+            return messages.sumNone;
+        }
+        return visibleFrames().length ? messages.selectToPlay : messages.noDetector;
+    }
+
+    async function showFrame(index, {follow = false} = {}) {
+        const frames = sequence();
+        if (!viewer.dataset.ra) {
+            message.textContent = messages.searchFirst;
+            message.classList.remove("d-none");
+            return;
+        }
+        if (!frames.length) {
+            stop();
+            message.textContent = emptySequenceMessage();
+            message.classList.remove("d-none");
+            cutout.classList.add("d-none");
+            frameLabel.textContent = "";
+            if (!sumDetectors?.length && !visibleFrames().length) {
+                warnIfEmpty();
+            }
+            return;
+        }
+        cursor = (index + frames.length) % frames.length;
+        const frame = frames[cursor];
+        highlight({follow, items: frame.items});
+        if (playing && frameMs != null) {
+            armCountdown(cursor + 1, frames.length);
+        }
+        if (playing) {
+            schedulePrefetch();
+        } else {
+            abortInflight();
+        }
+        await displayUrl(frame.url, `${cursor + 1} / ${frames.length}`);
+    }
+
+    function showClicked(item) {
+        const frames = sequence();
+        const index = frames.findIndex((frame) => frame.items.includes(item));
+        if (index >= 0) {
+            cursor = index;
+        }
+        highlight({item});
+        abortInflight();
+        const label = index >= 0 ? `${index + 1} / ${frames.length}` : "";
+        displayUrl(cutoutUrl(item.dataset.id), label);
     }
 
     function expectedFrameMs() {
@@ -800,6 +1103,8 @@
 
     function stop() {
         playing = false;
+        abortInflight();
+        setLoading(false);
         if (timer) {
             clearTimeout(timer);
             timer = null;
@@ -891,6 +1196,16 @@
 
     async function playLoop() {
         while (playing) {
+            const frames = sequence();
+            if (!frames.length) {
+                stop();
+                message.textContent = emptySequenceMessage();
+                message.classList.remove("d-none");
+                return;
+            }
+            if (cursor >= frames.length) {
+                cursor = 0;
+            }
             await showFrame(cursor, {follow: true});
             if (!playing) {
                 return;
@@ -908,24 +1223,36 @@
             stop();
             return;
         }
-        if (!visibleFrames().length) {
-            showFrame(0);
+        const frames = sequence();
+        if (!frames.length) {
+            message.textContent = emptySequenceMessage();
+            message.classList.remove("d-none");
+            cutout.classList.add("d-none");
             return;
         }
         playing = true;
         setPlayIcon(true);
         frameMs = null;
-        armCountdown(0, visibleFrames().length);
+        armCountdown(0, frames.length);
         countdownTimer = setInterval(paintCountdown, 250);
+        schedulePrefetch();
         playLoop();
     }
 
     document.getElementById("prev").addEventListener("click", () => {
         stop();
+        const frames = sequence();
+        if (!frames.length) {
+            return;
+        }
         showFrame(cursor - 1, {follow: true});
     });
     document.getElementById("next").addEventListener("click", () => {
         stop();
+        const frames = sequence();
+        if (!frames.length) {
+            return;
+        }
         showFrame(cursor + 1, {follow: true});
     });
     playButton.addEventListener("click", play);
@@ -945,23 +1272,202 @@
         if (!viewer.dataset.ra) {
             return;
         }
-        if (visibleFrames().length) {
-            showFrame(0);
+        const first = visibleFrames()[0];
+        if (first) {
+            showClicked(first);
             return;
         }
         message.textContent = messages.noDetector;
         message.classList.remove("d-none");
     });
+    document.getElementById("select-all-obs")?.addEventListener("change", (event) => {
+        visibleFrames().forEach((item) => {
+            const box = item.querySelector(".obs-check");
+            if (box) {
+                box.checked = event.target.checked;
+            }
+        });
+        syncSelectAll();
+    });
     list.addEventListener("click", (event) => {
+        if (event.target.closest(".obs-check")) {
+            syncSelectAll();
+            return;
+        }
         const item = event.target.closest("[data-id]");
         if (!item || item.classList.contains("d-none")) {
             return;
         }
         stop();
-        const index = visibleFrames().indexOf(item);
-        if (index >= 0) {
-            showFrame(index);
+        showClicked(item);
+    });
+
+    function setSumMode(detectors) {
+        const button = document.getElementById("sum-open");
+        const status = document.getElementById("sum-status");
+        sumDetectors = detectors;
+        button?.classList.toggle("btn-primary", Boolean(detectors?.length));
+        button?.classList.toggle("btn-outline-secondary", !detectors?.length);
+        button?.setAttribute("aria-pressed", detectors?.length ? "true" : "false");
+        if (!status) {
+            return;
         }
+        if (!detectors?.length) {
+            status.textContent = "";
+            status.classList.add("d-none");
+            return;
+        }
+        status.textContent = messages.sumReady.replace("%(count)s", String(sequence().length));
+        status.classList.remove("d-none");
+    }
+
+    function showSumError(text) {
+        const error = document.getElementById("sum-modal-error");
+        if (!error) {
+            return;
+        }
+        error.textContent = text;
+        error.classList.toggle("d-none", !text);
+    }
+
+    let pendingSumGroup = null;
+
+    function sumGroupChoices() {
+        const groups = new Map();
+        const bundles = new Map();
+        allRows().forEach((row) => {
+            const key = obsKey(row);
+            if (!bundles.has(key)) {
+                bundles.set(key, []);
+            }
+            bundles.get(key).push(row);
+        });
+        bundles.forEach((rows) => {
+            const detectors = [...new Set(rows.map((row) => row.dataset.detector).filter(Boolean))]
+                .sort((left, right) => Number(left) - Number(right));
+            if (detectors.length < 2) {
+                return;
+            }
+            const signature = detectors.join(",");
+            if (!groups.has(signature)) {
+                groups.set(signature, {signature, detectors, bundles: []});
+            }
+            groups.get(signature).bundles.push(rows);
+        });
+        return [...groups.values()];
+    }
+
+    function openSumModal() {
+        const choices = document.getElementById("sum-detector-choices");
+        if (!choices) {
+            return;
+        }
+        const groups = sumGroupChoices();
+        const current = (sumDetectors || []).join(",");
+        choices.replaceChildren();
+        groups.forEach((group, index) => {
+            const wrap = document.createElement("div");
+            wrap.className = "form-check";
+            const input = document.createElement("input");
+            input.type = "radio";
+            input.name = "sum-group";
+            input.className = "form-check-input";
+            input.id = `sum-group-${group.signature.replaceAll(",", "-")}`;
+            input.value = group.signature;
+            input.checked = group.signature === current || (current === "" && index === 0);
+            const label = document.createElement("label");
+            label.className = "form-check-label";
+            label.htmlFor = input.id;
+            label.textContent = messages.sumGroup
+                .replace("%(list)s", group.detectors.join(", "))
+                .replace("%(count)s", String(group.bundles.length));
+            wrap.append(input, label);
+            choices.append(wrap);
+        });
+        showSumError(groups.length ? "" : messages.sumNoGroup);
+        bootstrap.Modal.getOrCreateInstance(document.getElementById("sum-modal")).show();
+    }
+
+    function openObservationPicker(group) {
+        pendingSumGroup = group;
+        const body = document.getElementById("sum-obs-rows");
+        const all = document.getElementById("sum-obs-all");
+        body.replaceChildren();
+        if (all) {
+            all.checked = true;
+            all.indeterminate = false;
+        }
+        group.bundles.forEach((rows, index) => {
+            const sample = rows[0];
+            const tr = document.createElement("tr");
+            const checkCell = document.createElement("td");
+            const box = document.createElement("input");
+            box.type = "checkbox";
+            box.className = "form-check-input sum-obs-check";
+            box.checked = true;
+            box.dataset.index = String(index);
+            box.setAttribute("aria-label", messages.selectObservation);
+            checkCell.append(box);
+            const date = document.createElement("td");
+            date.textContent = sample.dataset.date || "";
+            const obs = document.createElement("td");
+            obs.textContent = sample.dataset.obsId || "";
+            const collection = document.createElement("td");
+            collection.textContent = sample.dataset.collection || "";
+            tr.append(checkCell, date, obs, collection);
+            body.append(tr);
+        });
+        bootstrap.Modal.getOrCreateInstance(document.getElementById("sum-modal")).hide();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById("sum-obs-modal")).show();
+    }
+
+    function applySum() {
+        const selected = document.querySelector("#sum-detector-choices input:checked");
+        const group = sumGroupChoices().find((item) => item.signature === selected?.value);
+        if (!group) {
+            showSumError(messages.sumNoGroup);
+            return;
+        }
+        openObservationPicker(group);
+    }
+
+    function confirmSumObservations() {
+        const group = pendingSumGroup;
+        if (!group) {
+            return;
+        }
+        const boxes = [...document.querySelectorAll(".sum-obs-check")];
+        let indexes = boxes.filter((box) => box.checked).map((box) => Number(box.dataset.index));
+        if (!indexes.length) {
+            indexes = group.bundles.map((_rows, index) => index);
+        }
+        const keys = new Set(indexes.map((index) => obsKey(group.bundles[index][0])));
+        allRows().forEach((row) => {
+            const box = row.querySelector(".obs-check");
+            if (box) {
+                box.checked = keys.has(obsKey(row));
+            }
+        });
+        syncSelectAll();
+        cursor = 0;
+        setSumMode(group.detectors);
+        highlight();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById("sum-obs-modal")).hide();
+    }
+
+    document.getElementById("sum-open")?.addEventListener("click", openSumModal);
+    document.getElementById("sum-apply")?.addEventListener("click", applySum);
+    document.getElementById("sum-obs-confirm")?.addEventListener("click", confirmSumObservations);
+    document.getElementById("sum-obs-all")?.addEventListener("change", (event) => {
+        document.querySelectorAll(".sum-obs-check").forEach((box) => {
+            box.checked = event.target.checked;
+        });
+    });
+    document.getElementById("sum-clear")?.addEventListener("click", () => {
+        setSumMode(null);
+        cursor = 0;
+        highlight();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById("sum-modal")).hide();
     });
 
     function cutoutErrorText(body) {
@@ -990,27 +1496,10 @@
     function replaceFrames(frames) {
         stop();
         cursor = 0;
+        setSumMode(null);
+        cutoutCache.clear();
         list.replaceChildren();
-        frames.forEach((frame) => {
-            const button = document.createElement("button");
-            button.type = "button";
-            button.className = "list-group-item list-group-item-action";
-            button.dataset.id = frame.id;
-            button.dataset.detector = frame.detector ?? "";
-            const date = document.createElement("span");
-            date.className = "d-block";
-            date.textContent = frame.date;
-            const detail = document.createElement("span");
-            detail.className = "d-block";
-            detail.textContent = frame.wavelength
-                ? `${frame.detector_label} · ${frame.wavelength}`
-                : frame.detector_label;
-            const meta = document.createElement("span");
-            meta.className = "d-block small text-muted";
-            meta.textContent = frame.collection ? `${frame.obs_id} · ${frame.collection}` : frame.obs_id;
-            button.append(date, detail, meta);
-            list.append(button);
-        });
+        frames.forEach((frame) => list.append(observationItem(frame)));
         if (!frames.length) {
             const empty = document.createElement("p");
             empty.className = "text-muted small";

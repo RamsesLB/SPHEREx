@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,11 +10,15 @@ from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.table import Table
 from astropy.wcs import WCS
+from django.contrib.auth import get_user_model
 from django.core.files.storage import FileSystemStorage
+from django.core.management import call_command
+from django.http import QueryDict
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from search import services, views
+from search.forms import CoordinateForm
 from search.models import SpherexCollection, SpherexImage
 
 
@@ -230,6 +235,13 @@ class LocalCoverageTests(TestCase):
         self.assertEqual([item.pk for item in inside], [image.pk])
         self.assertEqual(outside, [])
 
+    def test_several_collections_are_returned_together(self):
+        first = _image()
+        second = _image(access_url="https://example.test/qr.fits", collection="spherex_qr3")
+        _image(access_url="https://example.test/other.fits", collection="spherex_qr2", ra_min=20, ra_max=24, ra_center=22)
+        found = services.local_images_covering(SkyCoord(10, 0, unit="deg"), ["spherex_dr1", "spherex_qr3"])
+        self.assertEqual({item.pk for item in found}, {first.pk, second.pk})
+
 
 class SearchStoreTests(TestCase):
     def _table(self):
@@ -334,6 +346,66 @@ class CutoutViewTests(TestCase):
         self.assertIn(b"could not be generated", response.content)
 
 
+class SumCutoutTests(SimpleTestCase):
+    def test_combine_adds_finite_pixels(self):
+        total = services._combine_planes([
+            np.array([[1.0, np.nan]]),
+            np.array([[10.0, 4.0]]),
+        ])
+        self.assertEqual(total[0, 0], 11.0)
+        self.assertEqual(total[0, 1], 4.0)
+
+    def test_combine_resamples_a_smaller_plane(self):
+        total = services._combine_planes([
+            np.ones((2, 2)),
+            np.full((1, 1), 3.0),
+        ])
+        self.assertTrue(np.all(total == 4.0))
+
+    def test_sum_skips_a_detector_without_coverage(self):
+        images = [
+            SimpleNamespace(pk=1, detector=1),
+            SimpleNamespace(pk=2, detector=4),
+        ]
+
+        def fake_plane(image, coord, fov_arcsec):
+            if image.detector == 4:
+                raise services.SearchError("outside")
+            return np.array([[2.0, 5.0]])
+
+        with patch("search.services._flux_plane", fake_plane):
+            png = services.render_sum_cutout(images, SkyCoord(10, 0, unit="deg"), 60)
+        self.assertEqual(png.mode, "L")
+        self.assertGreater(png.size[0], 0)
+
+
+class SumViewTests(TestCase):
+    def test_response_contains_the_png_bytes(self):
+        first = _image()
+        second = _image(access_url="https://example.test/other.fits", detector=4)
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        path = Path(folder.name) / "sum.png"
+        path.write_bytes(b"\x89PNG\r\n\x1a\nsum")
+        request = RequestFactory().get("/", {
+            "ids": f"{first.pk},{second.pk}",
+            "ra": "10",
+            "dec": "0",
+            "fov": "60",
+            "unit": "arcsec",
+        })
+        with patch("search.services.cached_sum_cutout", return_value=path) as cached:
+            response = views.sum_cutout(request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"\x89PNG\r\n\x1a\nsum")
+        self.assertEqual(len(cached.call_args.args[0]), 2)
+
+    def test_missing_ids_are_rejected(self):
+        request = RequestFactory().get("/", {"ids": "", "ra": "10", "dec": "0", "fov": "60", "unit": "arcsec"})
+        response = views.sum_cutout(request)
+        self.assertEqual(response.status_code, 400)
+
+
 class CollectionLabelTests(SimpleTestCase):
     def test_data_release_labels(self):
         self.assertEqual(str(services.collection_label("spherex_dr1")), "Data Release 1")
@@ -391,3 +463,81 @@ class CollectionSyncTests(TestCase):
             set(SpherexCollection.objects.values_list("name", flat=True)),
             {"spherex_dr1", "spherex_qr3"},
         )
+
+
+class EnsureSuperuserTests(TestCase):
+    def test_skips_when_the_password_is_missing(self):
+        with patch.dict(os.environ, {"DJANGO_SUPERUSER_USERNAME": "admin", "DJANGO_SUPERUSER_PASSWORD": ""}, clear=False):
+            call_command("ensure_superuser")
+        self.assertFalse(get_user_model().objects.filter(username="admin").exists())
+
+    def test_creates_the_user_and_refreshes_the_password(self):
+        User = get_user_model()
+        env = {
+            "DJANGO_SUPERUSER_USERNAME": "admin",
+            "DJANGO_SUPERUSER_PASSWORD": "first-secret",
+            "DJANGO_SUPERUSER_EMAIL": "admin@example.com",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            call_command("ensure_superuser")
+        user = User.objects.get(username="admin")
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.check_password("first-secret"))
+        self.assertEqual(user.email, "admin@example.com")
+
+        env["DJANGO_SUPERUSER_PASSWORD"] = "second-secret"
+        with patch.dict(os.environ, env, clear=False):
+            call_command("ensure_superuser")
+        user.refresh_from_db()
+        self.assertEqual(User.objects.filter(username="admin").count(), 1)
+        self.assertTrue(user.check_password("second-secret"))
+
+
+class AdvancedSearchTests(SimpleTestCase):
+    def _form(self, extra):
+        data = {
+            "ra": "10",
+            "dec": "0",
+            "fov": "60",
+            "unit": "arcsec",
+            "collection": "spherex_qr3",
+            "detector": "2",
+        }
+        data.update(extra)
+        query = QueryDict(mutable=True)
+        for key, value in data.items():
+            if isinstance(value, list):
+                query.setlist(key, value)
+            else:
+                query[key] = value
+        choices = [("spherex_dr1", "DR1"), ("spherex_qr3", "QR3")]
+        with patch("search.forms.services.collection_choices", return_value=choices), \
+             patch("search.forms.services.default_collection", return_value="spherex_qr3"):
+            return CoordinateForm(query)
+
+    def test_advanced_keeps_every_checked_release(self):
+        form = self._form({"advanced": "on", "collections": ["spherex_dr1", "spherex_qr3"]})
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["collections"], ["spherex_dr1", "spherex_qr3"])
+
+    def test_plain_search_uses_the_selected_release(self):
+        form = self._form({})
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["collections"], ["spherex_qr3"])
+
+    def test_search_collections_keeps_each_release(self):
+        first = SimpleNamespace(pk=1, observation_date=1, obs_id="2025")
+        second = SimpleNamespace(pk=2, observation_date=2, obs_id="2026")
+
+        def fake_store(_ra, _dec, collection=None):
+            if collection == "spherex_dr1":
+                return [first], 1
+            if collection == "spherex_qr3":
+                return [second], 0
+            raise services.SearchError("down")
+
+        with patch("search.services.search_and_store", fake_store):
+            images, new_count = services.search_collections("10", "0", ["spherex_dr1", "spherex_qr3"])
+        self.assertEqual([item.obs_id for item in images], ["2025", "2026"])
+        self.assertEqual(new_count, 1)

@@ -99,6 +99,75 @@ msgstr "Sin resultados."
 msgid "Observations"
 msgstr "Observaciones"
 
+msgid "Select all"
+msgstr "Seleccionar todas"
+
+msgid "Select at least one observation to play."
+msgstr "Selecciona al menos una observación para reproducir."
+
+msgid "Include in playback"
+msgstr "Incluir en la reproducción"
+
+msgid "Sum"
+msgstr "Suma"
+
+msgid "Sum detectors"
+msgstr "Sumar detectores"
+
+msgid "Choose a detector group that shares the same observation. The next step lists those observations so you can keep only the dates you want."
+msgstr "Elige un grupo de detectores que comparten la misma observación. El paso siguiente lista esas observaciones para quedarte solo con las fechas que quieras."
+
+msgid "Advanced search"
+msgstr "Búsqueda avanzada"
+
+msgid "Each checked release is searched. The sum still stacks only the detectors that share one observation."
+msgstr "Se busca cada publicación marcada. La suma sigue apilando solo los detectores que comparten una observación."
+
+msgid "Releases"
+msgstr "Publicaciones"
+
+msgid "Select at least one release."
+msgstr "Selecciona al menos una publicación."
+
+msgid "Choose observations"
+msgstr "Elegir observaciones"
+
+msgid "Choose the observations to include. Each checked observation becomes one summed image. Confirm with none checked to keep every match."
+msgstr "Elige las observaciones a incluir. Cada observación marcada se convierte en una imagen sumada. Si confirmas sin marcar ninguna, se conservan todas las que coinciden."
+
+msgid "Date"
+msgstr "Fecha"
+
+msgid "Observation"
+msgstr "Observación"
+
+msgid "Confirm"
+msgstr "Confirmar"
+
+msgid "Detectors %(list)s · %(count)s observations"
+msgstr "Detectores %(list)s · %(count)s observaciones"
+
+msgid "No observation has more than one detector to sum."
+msgstr "Ninguna observación tiene más de un detector para sumar."
+
+msgid "Choose which detectors to stack for the same observation. An observation is checked only when it has a row for every detector you pick. Play shows each summed frame as soon as it is ready and keeps two downloads going. A detector that does not cover this position is skipped for that frame."
+msgstr "Elige qué detectores apilar para la misma observación. Una observación se marca solo si tiene una fila para cada detector elegido. Play muestra cada frame sumado en cuanto está listo y mantiene dos descargas a la vez. Si un detector no cubre esta posición, ese frame se suma sin él."
+
+msgid "No observation includes every selected detector."
+msgstr "Ninguna observación incluye todos los detectores elegidos."
+
+msgid "One detector"
+msgstr "Un detector"
+
+msgid "Apply"
+msgstr "Aplicar"
+
+msgid "Select at least one detector."
+msgstr "Selecciona al menos un detector."
+
+msgid "%(count)s observations ready to sum. Press play."
+msgstr "%(count)s observaciones listas para sumar. Presiona reproducir."
+
 msgid "Only this SPHEREx release is searched. New releases appear in this list."
 msgstr "Solo se busca esta publicación de SPHEREx. Las publicaciones nuevas aparecen en esta lista."
 

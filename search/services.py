@@ -133,11 +133,17 @@ def footprint_bbox(region, ra, dec):
 def local_images_covering(coord, collection):
     ra = float(coord.ra.deg) % 360.0
     dec = float(coord.dec.deg)
+    if isinstance(collection, str):
+        collections = [collection]
+    else:
+        collections = [name for name in collection if name]
+    if not collections:
+        return []
     inside = Q(ra_min__lte=F("ra_max")) & Q(ra_min__lte=ra) & Q(ra_max__gte=ra)
     wrapped = Q(ra_min__gt=F("ra_max")) & (Q(ra_min__lte=ra) | Q(ra_max__gte=ra))
     found = (
         SpherexImage.objects.filter(
-            collection=collection,
+            collection__in=collections,
             ra_min__isnull=False,
             dec_min__lte=dec,
             dec_max__gte=dec,
@@ -211,6 +217,31 @@ def search_and_store(ra, dec, collection=None):
     return saved, new_count
 
 
+def search_collections(ra, dec, collections):
+    """Query each release in order and return every stored row."""
+    saved = []
+    new_count = 0
+    errors = 0
+    seen = set()
+    names = [name for name in collections if name]
+    for name in names:
+        try:
+            images, created = search_and_store(ra, dec, collection=name)
+        except SearchError:
+            errors += 1
+            continue
+        for image in images:
+            if image.pk in seen:
+                continue
+            seen.add(image.pk)
+            saved.append(image)
+        new_count += created
+    if not saved and errors:
+        raise SearchError(_("IRSA could not be queried. Try again in a few seconds."))
+    saved.sort(key=lambda image: (image.observation_date, image.obs_id))
+    return saved, new_count
+
+
 def _bbox_from_region(region):
     text = _text(region, limit=8000)
     if not text:
@@ -279,6 +310,48 @@ def cached_cutout(image, ra, dec, fov_arcsec):
 
 
 def render_cutout(image, coord, fov_arcsec):
+    return _stretch_to_png(_flux_plane(image, coord, fov_arcsec), oriented=True)
+
+
+def cached_sum_cutout(images, ra, dec, fov_arcsec):
+    ordered = sorted(images, key=lambda image: (image.detector or 0, image.pk))
+    coord = parse_coordinates(ra, dec)
+    identity = "-".join(str(image.pk) for image in ordered)
+    path = _sum_cache_path(identity, coord.ra.deg, coord.dec.deg, fov_arcsec)
+    if path.exists() and path.stat().st_size > 0:
+        return path
+
+    key = _cutout_object_key(path.name)
+    if _restore_cutout(key, path):
+        return path
+
+    png = render_sum_cutout(ordered, coord, fov_arcsec)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".part")
+    png.save(temporary, format="PNG")
+    temporary.replace(path)
+    if path.stat().st_size <= 0:
+        path.unlink(missing_ok=True)
+        raise SearchError(_("The cutout was empty."))
+    _store_cutout(key, path)
+    return path
+
+
+def render_sum_cutout(images, coord, fov_arcsec):
+    """Add one detector at a time so a sum frame keeps a single FITS in memory."""
+    planes = []
+    for image in images:
+        try:
+            planes.append(_flux_plane(image, coord, fov_arcsec))
+        except SearchError:
+            logger.info("Detector %s does not cover the sum position", getattr(image, "detector", None))
+            continue
+    if not planes:
+        raise SearchError(_("This observation does not cover the requested position."))
+    return _stretch_to_png(_combine_planes(planes), oriented=True)
+
+
+def _flux_plane(image, coord, fov_arcsec):
     if settings.IMAGE_MODE == "fits":
         data, header = cached_image_hdu(image)
     else:
@@ -298,7 +371,35 @@ def render_cutout(image, coord, fov_arcsec):
         )
     except NoOverlapError as exc:
         raise SearchError(_("This observation does not cover the requested position.")) from exc
-    return _stretch_to_png(cutout.data, cutout.wcs)
+    return _orient_north_up_east_left(cutout.data, cutout.wcs)
+
+
+def _combine_planes(planes):
+    reference = np.asarray(planes[0], dtype=np.float64)
+    total = np.zeros(reference.shape, dtype=np.float64)
+    covered = np.zeros(reference.shape, dtype=bool)
+    for plane in planes:
+        array = np.asarray(plane, dtype=np.float64)
+        if array.shape != total.shape:
+            array = _resample_nearest(array, total.shape)
+        finite = np.isfinite(array)
+        total[finite] += array[finite]
+        covered |= finite
+    total[~covered] = np.nan
+    return total
+
+
+def _resample_nearest(array, shape):
+    if array.size == 0 or not shape[0] or not shape[1]:
+        return np.full(shape, np.nan)
+    rows = np.linspace(0, array.shape[0] - 1, shape[0]).astype(int)
+    columns = np.linspace(0, array.shape[1] - 1, shape[1]).astype(int)
+    return array[np.ix_(rows, columns)]
+
+
+def _sum_cache_path(identity, ra_deg, dec_deg, fov_arcsec):
+    name = f"sum_v1_{identity}_{ra_deg:.5f}_{dec_deg:.5f}_{float(fov_arcsec):.2f}.png"
+    return Path(settings.MEDIA_ROOT) / "cutouts" / name
 
 
 def collection_choices():
@@ -574,8 +675,8 @@ def _bilinear(array, pixel_x, pixel_y):
     return np.where(valid, sampled, np.nan)
 
 
-def _stretch_to_png(data, wcs=None):
-    array = _orient_north_up_east_left(data, wcs)
+def _stretch_to_png(data, wcs=None, *, oriented=False):
+    array = np.asarray(data, dtype=np.float64) if oriented else _orient_north_up_east_left(data, wcs)
     if array.ndim != 2 or array.size == 0:
         raise SearchError(_("The cutout was empty."))
 

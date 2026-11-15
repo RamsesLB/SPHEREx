@@ -36,6 +36,16 @@ class CoordinateForm(forms.Form):
         help_text=_("Only this SPHEREx release is searched. New releases appear in this list."),
         widget=forms.Select(attrs={"class": "form-select", "id": "collection"}),
     )
+    advanced = forms.BooleanField(
+        label=_("Advanced search"),
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input", "id": "advanced-search"}),
+    )
+    collections = forms.MultipleChoiceField(
+        label=_("Releases"),
+        required=False,
+        choices=(),
+    )
     detector = forms.ChoiceField(
         label=_("Detector"),
         required=False,
@@ -76,6 +86,7 @@ class CoordinateForm(forms.Form):
             choices = [*choices, (posted, posted)]
             names.append(posted)
         self.fields["collection"].choices = choices
+        self.fields["collections"].choices = choices
         if not self.is_bound:
             self.fields["collection"].initial = services.default_collection(names)
         self.fields["detector"].choices = [
@@ -118,4 +129,13 @@ class CoordinateForm(forms.Form):
                 services.fov_to_arcsec(fov, unit)
             except services.SearchError as exc:
                 self.add_error("fov", str(exc))
+        names = [name for name, _label in self.fields["collections"].choices]
+        picked = [name for name in (cleaned.get("collections") or []) if name in names]
+        single = cleaned.get("collection")
+        if cleaned.get("advanced"):
+            if not picked:
+                self.add_error("collections", _("Select at least one release."))
+            cleaned["collections"] = picked or ([single] if single else [])
+        else:
+            cleaned["collections"] = [single] if single else []
         return cleaned
