@@ -1430,6 +1430,10 @@
 
     async function playLoop() {
         while (playing) {
+            if (sumSequence?.length && !sumPlayStarted) {
+                stop();
+                return;
+            }
             const frames = sequence();
             if (!frames.length) {
                 stop();
@@ -2029,6 +2033,7 @@
     }
 
     function finishStack(frames, op) {
+        stop();
         const keys = new Set(frames.flatMap((frame) => frame.items.map((row) => obsKey(row))));
         allRows().forEach((row) => {
             const box = row.querySelector(".obs-check");
