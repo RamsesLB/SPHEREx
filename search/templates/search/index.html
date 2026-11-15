@@ -811,20 +811,6 @@
 
 {% block scripts %}
 <script>
-    const homeLink = document.getElementById("site-home");
-    if (homeLink) {
-        homeLink.addEventListener("click", (event) => {
-            event.preventDefault();
-            const target = new URL(homeLink.getAttribute("href"), window.location.origin);
-            const here = new URL(window.location.href);
-            const alreadyClean = here.pathname === target.pathname && !here.search && !here.hash;
-            if (alreadyClean) {
-                window.location.reload();
-                return;
-            }
-            window.location.assign(target.pathname);
-        });
-    }
     const messages = JSON.parse(document.getElementById("ui-messages").textContent);
     const viewer = document.getElementById("viewer");
     const cutout = document.getElementById("cutout");
@@ -1741,7 +1727,11 @@
             if (cursor >= frames.length) {
                 if (sumSequence?.length) {
                     cursor = Math.max(0, frames.length - 1);
+                    const finishedSum = stackOp === "sum";
                     stop();
+                    if (finishedSum) {
+                        paintStackButton("sum-open", false);
+                    }
                     return;
                 }
                 cursor = 0;

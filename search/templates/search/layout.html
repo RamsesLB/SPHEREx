@@ -5,22 +5,70 @@
         <meta charset="utf-8">
         <title>{% block title %}SPHEREx{% endblock %}</title>
         <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0">
+        <link rel="icon" href="/static/favicon.ico">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
         <style>
-            .site-nav { background: #000; }
-            .site-nav .navbar-brand {
-                color: #fff;
+            .font-headline {
+                font-family: "Space Grotesk", sans-serif;
+                letter-spacing: -0.03em;
+            }
+            .font-mono-tag {
+                font-family: "Space Grotesk", sans-serif;
+                letter-spacing: 0.12em;
+            }
+            .site-header {
+                background-color: #05070d;
+            }
+            .site-header .nav-link,
+            .lang-toggle {
+                font-family: "Space Grotesk", sans-serif;
+                letter-spacing: 0.08em;
+                font-size: 0.8rem;
                 font-weight: 600;
-                cursor: pointer;
+                color: #8c9ba5;
                 text-decoration: none;
             }
-            .site-nav .navbar-brand:hover,
-            .site-nav .navbar-brand:focus { color: #fff; }
-            .lang-globe { width: 1rem; height: 1rem; fill: currentColor; }
+            .lang-toggle {
+                background: transparent;
+                border: 0;
+                padding: 0.5rem 0;
+            }
+            .site-header .nav-link:hover,
+            .site-header .nav-link:focus,
+            .site-header .nav-link.active,
+            .lang-toggle:hover,
+            .lang-toggle:focus {
+                color: #fff;
+            }
+            .border-subtle-dark {
+                border-color: rgba(255, 255, 255, 0.08) !important;
+            }
+            .app-mark {
+                width: 2rem;
+                height: 2rem;
+                border-radius: 4px;
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                object-fit: cover;
+            }
+            .space-apps {
+                color: #8c9ba5;
+                font-size: 0.7rem;
+                text-decoration: none;
+                margin-left: 0.35rem;
+                padding-left: 0.75rem;
+                border-left: 1px solid rgba(255, 255, 255, 0.08);
+            }
+            .space-apps:hover,
+            .space-apps:focus {
+                color: #fff;
+            }
         </style>
         {% block extra_head %}{% endblock %}
     </head>
-    <body>
+    <body class="{% block body_class %}{% endblock %}">
         {% include "search/nav.html" %}
         {% block body %}
         {% endblock %}

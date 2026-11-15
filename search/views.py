@@ -2,7 +2,7 @@ import logging
 from urllib.parse import urlencode
 
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -13,6 +13,16 @@ from .models import ExampleSkyObject, SpherexImage
 from . import services
 
 logger = logging.getLogger(__name__)
+
+
+def home(request):
+    if "ra" in request.GET or "dec" in request.GET or (request.GET.get("format") or "").strip().lower() == "json":
+        target = reverse("index")
+        query = request.META.get("QUERY_STRING", "")
+        if query:
+            target = f"{target}?{query}"
+        return redirect(target)
+    return render(request, "search/home.html")
 
 
 def index(request):

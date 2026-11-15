@@ -489,3 +489,33 @@ msgstr "No hay una posición de AllWISE guardada para este punto, e IRSA no devo
 
 msgid "AllWISE 2010"
 msgstr "AllWISE 2010"
+
+msgid "Home"
+msgstr "Inicio"
+
+msgid "Mission"
+msgstr "Misión"
+
+msgid "Data search"
+msgstr "Búsqueda de datos"
+
+msgid "Open the data search"
+msgstr "Abrir la búsqueda de datos"
+
+msgid "SPHEREx: the sky in 102 infrared colors"
+msgstr "SPHEREx: el cielo en 102 colores infrarrojos"
+
+msgid "The NASA near-infrared observatory surveys the whole sky from 0.75 to 5 µm and records 102 colors at every point. Search a position in the public IRSA archive and compare that same patch from one date to the next."
+msgstr "El observatorio de infrarrojo cercano de NASA recorre todo el cielo de 0,75 a 5 µm y registra 102 colores en cada punto. Busca una posición en el archivo público de IRSA y compara ese mismo pedazo de una fecha a la siguiente."
+
+msgid "The search address also returns JSON. Add <code>format=json</code>, or send <code>Accept: application/json</code>."
+msgstr "La dirección de búsqueda también responde en JSON. Agrega <code>format=json</code>, o envía <code>Accept: application/json</code>."
+
+msgid "102 spectral channels"
+msgstr "102 canales espectrales"
+
+msgid "All-sky survey"
+msgstr "Cielo completo"
+
+msgid "Open menu"
+msgstr "Abrir menú"

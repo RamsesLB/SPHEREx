@@ -1,0 +1,89 @@
+{% extends "search/layout.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "SPHEREx: the sky in 102 infrared colors" %}{% endblock %}
+
+{% block body_class %}landing-page d-flex flex-column min-vh-100{% endblock %}
+
+{% block extra_head %}
+<style>
+    .landing-page {
+        background-color: #05070d;
+        color: #d4e4fa;
+        font-family: Inter, sans-serif;
+    }
+    .btn-nasa-blue {
+        background-color: #0b3d91;
+        border-color: #0b3d91;
+        color: #fff;
+        padding: 0.75rem 2rem;
+        border-radius: 4px;
+        font-family: "Space Grotesk", sans-serif;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .btn-nasa-blue:hover,
+    .btn-nasa-blue:focus {
+        background-color: #0f4ebb;
+        border-color: #0f4ebb;
+        color: #fff;
+        box-shadow: 0 0 15px rgba(11, 61, 145, 0.45);
+    }
+    .hero-title {
+        font-size: clamp(2.15rem, 5vw, 3.6rem);
+        line-height: 1.12;
+    }
+    .hero-lead {
+        max-width: 40rem;
+        color: #a4b3c6;
+    }
+    .hero-note {
+        max-width: 36rem;
+        color: #8c9ba5;
+        font-size: 0.95rem;
+    }
+    .hero-note code {
+        color: #7bd0ff;
+        font-size: 0.85em;
+    }
+    .landing-footer {
+        color: #8c9ba5;
+        font-size: 0.7rem;
+    }
+</style>
+{% endblock %}
+
+{% block body %}
+<main class="flex-grow-1 d-flex align-items-center justify-content-center py-5">
+    <div class="container text-center">
+        <div class="row justify-content-center">
+            <div class="col-12 col-lg-10 col-xl-9">
+                <h1 class="hero-title font-headline fw-bold text-white mb-4">{% trans "SPHEREx: the sky in 102 infrared colors" %}</h1>
+                <p class="lead hero-lead fs-5 mx-auto mb-4 fw-normal">{% trans "The NASA near-infrared observatory surveys the whole sky from 0.75 to 5 µm and records 102 colors at every point. Search a position in the public IRSA archive and compare that same patch from one date to the next." %}</p>
+                <p class="hero-note mx-auto mb-4">{% blocktrans %}The search address also returns JSON. Add <code>format=json</code>, or send <code>Accept: application/json</code>.{% endblocktrans %}</p>
+                <div class="d-flex flex-column align-items-center gap-3">
+                    <a class="btn btn-nasa-blue d-inline-flex align-items-center gap-2 text-decoration-none" href="{% url 'index' %}">
+                        <span>{% trans "Open the data search" %}</span>
+                        <span aria-hidden="true">→</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+<footer class="border-top border-subtle-dark py-3 mt-auto">
+    <div class="container-fluid px-4 px-lg-5">
+        <div class="row align-items-center justify-content-between gy-2 font-mono-tag landing-footer">
+            <div class="col-12 col-md-auto text-center text-md-start">
+                <span>NASA ASTROPHYSICS · SPHEREx · SPECTRO-PHOTOMETER FOR THE HISTORY OF THE UNIVERSE</span>
+            </div>
+            <div class="col-12 col-md-auto text-center text-md-end d-flex flex-wrap justify-content-center justify-content-md-end gap-3 gap-md-4">
+                <span>0.75–5.0 µm</span>
+                <span>{% trans "102 spectral channels" %}</span>
+                <span>{% trans "All-sky survey" %}</span>
+            </div>
+        </div>
+    </div>
+</footer>
+{% endblock %}

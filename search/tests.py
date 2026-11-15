@@ -11,6 +11,7 @@ from astropy.io import fits
 from astropy.table import Table
 from astropy.wcs import WCS
 from django.contrib.auth import get_user_model
+from django.urls import resolve, reverse
 from django.core.files.storage import FileSystemStorage
 from django.core.management import call_command
 from django.http import QueryDict
@@ -716,6 +717,26 @@ class AllwiseAnchorTests(TestCase):
         self.assertAlmostEqual(called.dec.deg, 4.73798, places=3)
         self.assertTrue(result["found"])
         self.assertAlmostEqual(result["center_ra"], called.ra.deg)
+
+
+class LandingRouteTests(SimpleTestCase):
+    def test_root_renders_the_landing(self):
+        response = views.home(RequestFactory().get("/"))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn(reverse("index"), content)
+        self.assertIn("102", content)
+
+    def test_a_search_on_the_root_redirects_to_search(self):
+        response = views.home(RequestFactory().get("/?ra=10&dec=0&format=json"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/search/?ra=10&dec=0&format=json")
+
+    def test_routes(self):
+        self.assertEqual(reverse("home"), "/")
+        self.assertEqual(reverse("index"), "/search/")
+        self.assertIs(resolve("/").func, views.home)
+        self.assertIs(resolve("/search/").func, views.index)
 
 
 class AllwiseViewTests(SimpleTestCase):

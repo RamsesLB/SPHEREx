@@ -30,7 +30,7 @@
     </ul>
     <p>{% blocktrans %}The same search address can return the results as JSON. Add <code>format=json</code> to the URL, or send the header <code>Accept: application/json</code>. The response looks in the local database and then waits for IRSA. If IRSA answers, those observations are returned. If IRSA fails, the saved observations are returned.{% endblocktrans %}</p>
     <p>{% trans "Example for Barnard's Star:" %}</p>
-    <p><a href="{% url 'index' %}?ra=17h57m47.16s&amp;dec=%2B04d45m55.2s&amp;fov=300&amp;unit=arcsec&amp;object=Barnard%27s%20Star&amp;format=json"><code>/?ra=17h57m47.16s&amp;dec=+04d45m55.2s&amp;fov=300&amp;unit=arcsec&amp;object=Barnard's Star&amp;format=json</code></a></p>
+    <p><a href="{% url 'index' %}?ra=17h57m47.16s&amp;dec=%2B04d45m55.2s&amp;fov=300&amp;unit=arcsec&amp;object=Barnard%27s%20Star&amp;format=json"><code>{% url 'index' %}?ra=17h57m47.16s&amp;dec=+04d45m55.2s&amp;fov=300&amp;unit=arcsec&amp;object=Barnard's Star&amp;format=json</code></a></p>
 
     <h2>{% trans "NASA Space Apps Challenge" %}</h2>
     <p>{% blocktrans %}The NASA International Space Apps Challenge is a yearly hackathon. In 2026 the challenge “Planet X and SPHEREx” asks teams to use SPHEREx infrared images to look for objects that move or change brightness from one epoch to the next.{% endblocktrans %}</p>
