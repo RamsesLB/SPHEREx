@@ -4,7 +4,7 @@
 
 Search a sky position in the public IRSA archive, play SPHEREx cutouts, and sum or subtract epochs of the same patch.
 
-Built during the two days of the NASA Space Apps hackathon.
+Built during the two days of the NASA Space Apps hackathon: [spherex.adsumy.com](https://spherex.adsumy.com/).
 
 ## How it stays up when IRSA does not
 
